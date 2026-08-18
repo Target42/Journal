@@ -195,6 +195,9 @@ object MainForm: TMainForm
       object miTitel: TMenuItem
         Caption = 'Titel'#8230
       end
+      object miAbsence: TMenuItem
+        Caption = 'Urlaub / Krankheit'#8230
+      end
       object N1: TMenuItem
         Caption = '-'
       end

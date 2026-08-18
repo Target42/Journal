@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Absence.h"
 #include "WorkPackage.h"
 
 #include <QDate>
@@ -24,6 +25,26 @@ enum class OvertimeLimitPeriod {
     Quarterly
 };
 
+enum class EveDayTreatment {
+    Normal,
+    FullVacation,
+    HalfVacation,
+    CompanyFree
+};
+
+inline bool isEveDate(const QDate &date)
+{
+    return date.isValid() && date.month() == 12 && (date.day() == 24 || date.day() == 31);
+}
+
+inline QString eveDayName(const QDate &date)
+{
+    if (!isEveDate(date)) {
+        return {};
+    }
+    return date.day() == 24 ? QStringLiteral("Heiligabend") : QStringLiteral("Silvester");
+}
+
 struct OvertimeAccountSettings {
     bool limitsEnabled = true;
     OvertimeLimitPeriod period = OvertimeLimitPeriod::Quarterly;
@@ -33,6 +54,7 @@ struct OvertimeAccountSettings {
 
 struct WorkSettings {
     double annualVacationDays = 30.0;
+    EveDayTreatment eveDayTreatment = EveDayTreatment::Normal;
     WorkTimeMode workTimeMode = WorkTimeMode::Even;
     double weeklyHours = 40.0;
     std::array<bool, 7> workDays {true, true, true, true, true, false, false};
@@ -78,6 +100,8 @@ public:
     int workDayCount() const;
     double targetHoursForWeekday(int dayOfWeek) const;
     double targetHoursForDate(const QDate &date) const;
+    Absence impliedAbsenceForDate(const QDate &date) const;
+    bool isCompanyFreeEveDate(const QDate &date) const;
 
 signals:
     void changed();

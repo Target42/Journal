@@ -73,6 +73,18 @@ double creditedHours(const QDate &date, double target, double workHours, const A
     }
     return workHours + target * absence.fraction;
 }
+
+Absence effectiveAbsence(const QDate &date)
+{
+    const Absence stored = JournalStore::instance().absenceForDate(date);
+    if (stored.isSet()) {
+        return stored;
+    }
+    if (CalendarService::instance().isPublicHoliday(date)) {
+        return {};
+    }
+    return AppSettings::instance().impliedAbsenceForDate(date);
+}
 } // namespace
 
 TimeTotals &TimeTotals::instance()
@@ -238,7 +250,16 @@ double TimeTotals::creditedHoursForDate(const QDate &date) const
                               ? 0.0
                               : AppSettings::instance().targetHoursForDate(date);
     auto &store = JournalStore::instance();
-    return creditedHours(date, target, store.actualHoursForDate(date), store.absenceForDate(date));
+    return creditedHours(date, target, store.actualHoursForDate(date),
+                         effectiveAbsence(date));
+}
+
+Absence TimeTotals::effectiveAbsenceForDate(const QDate &date) const
+{
+    if (!date.isValid()) {
+        return {};
+    }
+    return effectiveAbsence(date);
 }
 
 AccountTrend TimeTotals::accountTrend(int workedDays) const
@@ -270,7 +291,7 @@ AccountTrend TimeTotals::accountTrend(int workedDays) const
             continue;
         }
 
-        const Absence absence = store.absenceForDate(date);
+        const Absence absence = effectiveAbsence(date);
         if (absence.isSet() && !absence.isHalfDay()) {
             continue;
         }
@@ -332,7 +353,7 @@ MonthTotals TimeTotals::computeMonth(int year, int month, double carryIn) const
         const double target = calendar.isPublicHoliday(date)
                                   ? 0.0
                                   : settings.targetHoursForDate(date);
-        const Absence absence = store.absenceForDate(date);
+        const Absence absence = effectiveAbsence(date);
         const double actual =
             creditedHours(date, target, store.actualHoursForDate(date), absence);
         totals.targetHours += target;

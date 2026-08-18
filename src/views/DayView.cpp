@@ -205,7 +205,15 @@ void DayView::refreshHeader()
     if (m_date == QDate::currentDate()) {
         text += QStringLiteral("  ·  heute");
     }
-    const Absence absence = JournalStore::instance().absenceForDate(m_date);
+    const QString eve = eveDayName(m_date);
+    if (!eve.isEmpty()) {
+        if (AppSettings::instance().isCompanyFreeEveDate(m_date)) {
+            text += QStringLiteral("  ·  %1 (frei)").arg(eve);
+        } else {
+            text += QStringLiteral("  ·  %1").arg(eve);
+        }
+    }
+    const Absence absence = TimeTotals::instance().effectiveAbsenceForDate(m_date);
     if (absence.isSet()) {
         text += QStringLiteral("  ·  %1").arg(absence.label());
     }

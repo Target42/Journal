@@ -1,5 +1,7 @@
 #pragma once
 
+#include "Absence.h"
+
 #include <QDate>
 #include <QHash>
 #include <QObject>
@@ -59,6 +61,7 @@ public:
     YearTotals yearTotals(int year);
 
     double creditedHoursForDate(const QDate &date) const;
+    Absence effectiveAbsenceForDate(const QDate &date) const;
     AccountTrend accountTrend(int workedDays = 30) const;
 
 signals:

@@ -24,6 +24,7 @@ type
   TAbsenceType = (atNone, atVacation, atSick);
   TWorkTimeMode = (wtmEven, wtmIndividual);
   TOvertimeLimitPeriod = (olpMonthly, olpQuarterly);
+  TEveDayTreatment = (edtNormal, edtFullVacation, edtHalfVacation, edtCompanyFree);
 
   TGermanState = record
     Code: string;
@@ -72,6 +73,7 @@ type
 
   TWorkSettings = record
     AnnualVacationDays: Double;
+    EveDayTreatment: TEveDayTreatment;
     WorkTimeMode: TWorkTimeMode;
     WeeklyHours: Double;
     WorkDays: array[0..6] of Boolean;
@@ -177,6 +179,8 @@ function IsoDate(const ADate: TDate): string;
 function ParseIsoDate(const S: string): TDate;
 function DateValid(const ADate: TDate): Boolean;
 function IsoWeekDay(const ADate: TDate): Integer;
+function IsEveDate(const ADate: TDate): Boolean;
+function EveDayName(const ADate: TDate): string;
 function FormatHours(AHours: Double; ADecimals: Integer = 2): string;
 function FormatHoursAbs(AHours: Double; ADecimals: Integer = 2): string;
 function HoursColor(AHours: Double): TColor;
@@ -275,6 +279,30 @@ end;
 function IsoWeekDay(const ADate: TDate): Integer;
 begin
   Result := DayOfTheWeek(ADate);
+end;
+
+function IsEveDate(const ADate: TDate): Boolean;
+var
+  Y, M, D: Word;
+begin
+  if not DateValid(ADate) then
+    Exit(False);
+  DecodeDate(ADate, Y, M, D);
+  Result := (M = 12) and ((D = 24) or (D = 31));
+end;
+
+function EveDayName(const ADate: TDate): string;
+var
+  Y, M, D: Word;
+begin
+  Result := '';
+  if not IsEveDate(ADate) then
+    Exit;
+  DecodeDate(ADate, Y, M, D);
+  if D = 24 then
+    Result := 'Heiligabend'
+  else
+    Result := 'Silvester';
 end;
 
 function FormatHours(AHours: Double; ADecimals: Integer): string;

@@ -36,6 +36,7 @@ private:
 
     QComboBox *m_stateCombo = nullptr;
     QDoubleSpinBox *m_vacationSpin = nullptr;
+    QComboBox *m_eveCombo = nullptr;
     std::array<QCheckBox *, 7> m_workDayChecks {};
     QRadioButton *m_evenRadio = nullptr;
     QRadioButton *m_individualRadio = nullptr;

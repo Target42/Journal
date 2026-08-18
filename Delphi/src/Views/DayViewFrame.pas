@@ -180,7 +180,7 @@ end;
 
 procedure TDayViewFrame.RefreshHeader;
 var
-  HeaderText, HintText, Line: string;
+  HeaderText, HintText, Line, Eve: string;
   DayBounds: TDayBounds;
   Absence: TAbsence;
   Breaks: TBreakAdjustment;
@@ -192,7 +192,15 @@ begin
   HeaderText := GermanDateLong(FDate);
   if SameDate(FDate, Date) then
     HeaderText := HeaderText + '  ' + MiddleDot + '  heute';
-  Absence := TJournalStore.Instance.AbsenceForDate(FDate);
+  Eve := EveDayName(FDate);
+  if Eve <> '' then
+  begin
+    if TAppSettings.Instance.IsCompanyFreeEveDate(FDate) then
+      HeaderText := HeaderText + '  ' + MiddleDot + '  ' + Eve + ' (frei)'
+    else
+      HeaderText := HeaderText + '  ' + MiddleDot + '  ' + Eve;
+  end;
+  Absence := TTimeTotals.Instance.EffectiveAbsenceForDate(FDate);
   if Absence.IsSet then
     HeaderText := HeaderText + '  ' + MiddleDot + '  ' + Absence.LabelText;
   HeaderText := HeaderText + '  ' + MiddleDot + '  Ist ' +

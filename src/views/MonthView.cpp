@@ -15,8 +15,11 @@
 #include <QAction>
 #include <QBrush>
 #include <QColor>
+#include <QContextMenuEvent>
+#include <QEvent>
 #include <QFont>
 #include <QFontMetrics>
+#include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
 #include <QLocale>
@@ -25,9 +28,11 @@
 #include <QModelIndex>
 #include <QPalette>
 #include <QPoint>
+#include <QPushButton>
 #include <QStringList>
 #include <QTableWidget>
 #include <QTableWidgetItem>
+#include <QTimer>
 #include <QVBoxLayout>
 
 namespace {
@@ -168,9 +173,8 @@ MonthView::MonthView(QWidget *parent)
 
     connect(m_dayTable, &QTableWidget::cellClicked, this, &MonthView::onRowClicked);
     connect(m_dayTable, &QTableWidget::cellDoubleClicked, this, &MonthView::onRowDoubleClicked);
-    m_dayTable->viewport()->setContextMenuPolicy(Qt::CustomContextMenu);
-    connect(m_dayTable->viewport(), &QWidget::customContextMenuRequested,
-            this, &MonthView::showDayContextMenu);
+    m_dayTable->viewport()->installEventFilter(this);
+    connect(m_absenceButton, &QPushButton::clicked, this, &MonthView::openAbsenceDialog);
 
     CalendarService::instance().ensureYearLoaded(m_month.year());
     refresh();
@@ -182,8 +186,17 @@ void MonthView::setupUi()
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(4);
 
+    auto *headerRow = new QHBoxLayout();
+    headerRow->setContentsMargins(0, 0, 0, 0);
+    headerRow->setSpacing(8);
     m_summaryLabel = new QLabel(this);
-    layout->addWidget(m_summaryLabel);
+    m_summaryLabel->setWordWrap(true);
+    headerRow->addWidget(m_summaryLabel, 1);
+    m_absenceButton = new QPushButton(QStringLiteral("Urlaub / Krankheit…"), this);
+    m_absenceButton->setAutoDefault(false);
+    m_absenceButton->setDefault(false);
+    headerRow->addWidget(m_absenceButton, 0, Qt::AlignTop);
+    layout->addLayout(headerRow);
 
     m_dayTable = new QTableWidget(0, ColCount, this);
     m_dayTable->setHorizontalHeaderLabels({
@@ -232,6 +245,17 @@ void MonthView::setupUi()
     m_dayTable->setColumnWidth(ColSaldo, hoursColumnWidth);
 
     layout->addWidget(m_dayTable);
+}
+
+bool MonthView::eventFilter(QObject *watched, QEvent *event)
+{
+    if (watched == m_dayTable->viewport() && event->type() == QEvent::ContextMenu) {
+        const auto *contextEvent = static_cast<QContextMenuEvent *>(event);
+        const QPoint pos = contextEvent->pos();
+        QTimer::singleShot(0, this, [this, pos]() { popupDayMenu(pos); });
+        return true;
+    }
+    return QWidget::eventFilter(watched, event);
 }
 
 void MonthView::setMonth(int year, int month)
@@ -338,7 +362,6 @@ void MonthView::fillDayRow(int day)
 
     auto &calendar = CalendarService::instance();
     auto &settings = AppSettings::instance();
-    auto &store = JournalStore::instance();
 
     const QString dayText = QStringLiteral("%1  %2")
                                 .arg(locale.toString(date, QStringLiteral("ddd")), 2)
@@ -347,11 +370,20 @@ void MonthView::fillDayRow(int day)
     QStringList hints;
     if (calendar.isPublicHoliday(date)) {
         hints << calendar.publicHolidayName(date);
+    } else {
+        const QString eve = eveDayName(date);
+        if (!eve.isEmpty()) {
+            if (settings.isCompanyFreeEveDate(date)) {
+                hints << QStringLiteral("%1 (frei)").arg(eve);
+            } else {
+                hints << eve;
+            }
+        }
     }
     if (calendar.isSchoolHoliday(date)) {
         hints << calendar.schoolHolidayName(date);
     }
-    const Absence absence = store.absenceForDate(date);
+    const Absence absence = TimeTotals::instance().effectiveAbsenceForDate(date);
     if (absence.isSet()) {
         hints << absence.label();
     }
@@ -462,10 +494,11 @@ void MonthView::applyRowColors(int row, const QDate &date, const QString & /*hin
     const bool weekend = date.dayOfWeek() >= 6;
     const bool holiday = CalendarService::instance().isPublicHoliday(date);
     const bool school = CalendarService::instance().isSchoolHoliday(date);
-    const Absence absence = JournalStore::instance().absenceForDate(date);
+    const bool companyFree = AppSettings::instance().isCompanyFreeEveDate(date);
+    const Absence absence = TimeTotals::instance().effectiveAbsenceForDate(date);
 
     QColor background;
-    if (holiday) {
+    if (holiday || companyFree) {
         background = publicHolidayColor();
     } else if (weekend && school) {
         background = weekendAndSchoolColor();
@@ -500,9 +533,9 @@ QDate MonthView::dateFromRow(int row) const
     return QDate(m_month.year(), m_month.month(), row + 1);
 }
 
-void MonthView::showDayContextMenu(const QPoint &pos)
+void MonthView::popupDayMenu(const QPoint &viewportPos)
 {
-    const QModelIndex index = m_dayTable->indexAt(pos);
+    const QModelIndex index = m_dayTable->indexAt(viewportPos);
     if (index.isValid()) {
         m_dayTable->selectRow(index.row());
         emit dayActivated(dateFromRow(index.row()));
@@ -549,7 +582,7 @@ void MonthView::showDayContextMenu(const QPoint &pos)
     auto *clearAction = menu.addAction(QStringLiteral("Status entfernen"));
     clearAction->setEnabled(current.isSet());
 
-    QAction *chosen = menu.exec(m_dayTable->viewport()->mapToGlobal(pos));
+    QAction *chosen = menu.exec(m_dayTable->viewport()->mapToGlobal(viewportPos));
     if (!chosen) {
         return;
     }
@@ -588,6 +621,20 @@ void MonthView::openRangeDialog(const QDate &from)
         return;
     }
     applyAbsence(datesInRange(start, end, true), dialog.absence());
+}
+
+void MonthView::openAbsenceDialog()
+{
+    QDate from = dateFromRow(m_dayTable->currentRow());
+    if (!from.isValid()) {
+        const QDate today = QDate::currentDate();
+        if (today.year() == m_month.year() && today.month() == m_month.month()) {
+            from = today;
+        } else {
+            from = m_month;
+        }
+    }
+    openRangeDialog(from);
 }
 
 void MonthView::applyAbsence(const QVector<QDate> &dates, const Absence &absence)

@@ -195,6 +195,9 @@ void MainWindow::setupMenus()
     auto *titlesAction = fileMenu->addAction(QStringLiteral("Titel…"));
     connect(titlesAction, &QAction::triggered, this, &MainWindow::openTitles);
 
+    auto *absenceAction = fileMenu->addAction(QStringLiteral("Urlaub / Krankheit…"));
+    connect(absenceAction, &QAction::triggered, m_monthView, &MonthView::openAbsenceDialog);
+
     fileMenu->addSeparator();
 
     auto *retirementAction = fileMenu->addAction(QStringLiteral("Rentenrechner…"));

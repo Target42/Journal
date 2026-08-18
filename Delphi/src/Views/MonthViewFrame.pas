@@ -4,18 +4,21 @@ interface
 
 uses
   Winapi.Windows, System.SysUtils, System.Classes, Vcl.Graphics, Vcl.Controls,
-  Vcl.Forms, Vcl.StdCtrls, Vcl.Grids, Vcl.Menus, Journal.Types;
+  Vcl.Forms, Vcl.StdCtrls, Vcl.Grids, Vcl.Menus, Vcl.ExtCtrls, Journal.Types;
 
 type
   TMonthActivated = procedure(const ADate: TDate) of object;
 
   TMonthViewFrame = class(TFrame)
+    pnlHeader: TPanel;
     lblSummary: TLabel;
+    btnAbsence: TButton;
     grdDays: TStringGrid;
   private
     FMonth: TDate;
     FOnDayActivated: TMonthActivated;
     FContextDate: TDate;
+    FDayMenu: TPopupMenu;
     procedure CalendarYearChanged(AYear: Integer);
     procedure SettingsChanged;
     procedure DataReloaded;
@@ -28,10 +31,9 @@ type
     procedure GridDblClick(Sender: TObject);
     procedure GridDrawCell(Sender: TObject; ACol, ARow: Integer; Rect: TRect;
       State: TGridDrawState);
-    procedure GridMouseUp(Sender: TObject; Button: TMouseButton; Shift: TShiftState;
-      X, Y: Integer);
     procedure GridResized(Sender: TObject);
-    procedure ShowDayContextMenu(const ADate: TDate; const ScreenPos: TPoint);
+    procedure DayMenuPopup(Sender: TObject);
+    procedure RebuildDayMenu;
     procedure ApplyAbsence(const Dates: TArray<TDate>; const Absence: TAbsence);
     procedure OpenRangeDialog(const FromDate: TDate);
     procedure OpenDayPackages(const ADate: TDate);
@@ -45,12 +47,14 @@ type
     procedure CtxBounds(Sender: TObject);
     procedure CtxRange(Sender: TObject);
     procedure CtxClear(Sender: TObject);
+    procedure AbsenceClick(Sender: TObject);
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
     function DisplayedMonth: TDate;
     procedure SetMonth(AYear, AMonth: Integer);
     procedure SelectDate(const ADate: TDate);
+    procedure OpenAbsenceDialog;
     property OnDayActivated: TMonthActivated read FOnDayActivated write FOnDayActivated;
   end;
 
@@ -144,7 +148,10 @@ begin
   grdDays.OnClick := GridClick;
   grdDays.OnDblClick := GridDblClick;
   grdDays.OnDrawCell := GridDrawCell;
-  grdDays.OnMouseUp := GridMouseUp;
+  FDayMenu := TPopupMenu.Create(Self);
+  FDayMenu.OnPopup := DayMenuPopup;
+  grdDays.PopupMenu := FDayMenu;
+  btnAbsence.OnClick := AbsenceClick;
   OnResize := GridResized;
   TCalendarService.Instance.OnYearDataChanged.Add(CalendarYearChanged);
   TAppSettings.Instance.OnChanged.Add(SettingsChanged);
@@ -266,7 +273,7 @@ var
   Days: Integer;
   ADate: TDate;
   Row: Integer;
-  Hints: string;
+  Hints, Eve: string;
   Target, Actual, Saldo: Double;
   Absence: TAbsence;
   Arbzg: TArbzgDay;
@@ -279,14 +286,25 @@ begin
   Row := Day;
   Hints := '';
   if TCalendarService.Instance.IsPublicHoliday(ADate) then
-    Hints := TCalendarService.Instance.PublicHolidayName(ADate);
+    Hints := TCalendarService.Instance.PublicHolidayName(ADate)
+  else
+  begin
+    Eve := EveDayName(ADate);
+    if Eve <> '' then
+    begin
+      if TAppSettings.Instance.IsCompanyFreeEveDate(ADate) then
+        Hints := Eve + ' (frei)'
+      else
+        Hints := Eve;
+    end;
+  end;
   if TCalendarService.Instance.IsSchoolHoliday(ADate) then
   begin
     if Hints <> '' then
       Hints := Hints + ' ' + MiddleDot + ' ';
     Hints := Hints + TCalendarService.Instance.SchoolHolidayName(ADate);
   end;
-  Absence := TJournalStore.Instance.AbsenceForDate(ADate);
+  Absence := TTimeTotals.Instance.EffectiveAbsenceForDate(ADate);
   if Absence.IsSet then
   begin
     if Hints <> '' then
@@ -374,14 +392,15 @@ end;
 
 function TMonthViewFrame.RowBackground(const ADate: TDate): TColor;
 var
-  Weekend, Holiday, School: Boolean;
+  Weekend, Holiday, School, CompanyFree: Boolean;
   Absence: TAbsence;
 begin
   Weekend := IsoWeekDay(ADate) >= 6;
   Holiday := TCalendarService.Instance.IsPublicHoliday(ADate);
   School := TCalendarService.Instance.IsSchoolHoliday(ADate);
-  Absence := TJournalStore.Instance.AbsenceForDate(ADate);
-  if Holiday then
+  CompanyFree := TAppSettings.Instance.IsCompanyFreeEveDate(ADate);
+  Absence := TTimeTotals.Instance.EffectiveAbsenceForDate(ADate);
+  if Holiday or CompanyFree then
     Result := RGB(250, 212, 212)
   else if Weekend and School then
     Result := RGB(232, 228, 200)
@@ -462,86 +481,76 @@ begin
   Result := EncodeDate(YearOf(FMonth), MonthOf(FMonth), Row);
 end;
 
-procedure TMonthViewFrame.GridMouseUp(Sender: TObject; Button: TMouseButton;
-  Shift: TShiftState; X, Y: Integer);
+procedure TMonthViewFrame.DayMenuPopup(Sender: TObject);
 var
+  P: TPoint;
   Col, Row: Integer;
   D: TDate;
-  P: TPoint;
 begin
-  if Button <> mbRight then
-    Exit;
-  grdDays.MouseToCell(X, Y, Col, Row);
-  if Row >= 1 then
+  GetCursorPos(P);
+  P := grdDays.ScreenToClient(P);
+  if PtInRect(grdDays.ClientRect, P) then
   begin
-    grdDays.Row := Row;
-    D := DateFromRow(Row);
-    if Assigned(FOnDayActivated) then
-      FOnDayActivated(D);
-  end
-  else
-    D := DateFromRow(grdDays.Row);
-  if not DateValid(D) then
-    Exit;
-  P := grdDays.ClientToScreen(Point(X, Y));
-  ShowDayContextMenu(D, P);
+    grdDays.MouseToCell(P.X, P.Y, Col, Row);
+    if Row >= 1 then
+    begin
+      grdDays.Row := Row;
+      D := DateFromRow(Row);
+      if DateValid(D) and Assigned(FOnDayActivated) then
+        FOnDayActivated(D);
+    end;
+  end;
+  FContextDate := DateFromRow(grdDays.Row);
+  RebuildDayMenu;
 end;
 
-procedure TMonthViewFrame.GridResized(Sender: TObject);
-begin
-  FitGridStretchColumn(grdDays, ColHint);
-end;
-
-procedure TMonthViewFrame.ShowDayContextMenu(const ADate: TDate; const ScreenPos: TPoint);
+procedure TMonthViewFrame.RebuildDayMenu;
 var
-  Menu: TPopupMenu;
   Current: TAbsence;
   Countable: Boolean;
-  Vac, Sick: TMenuItem;
-  Item: TMenuItem;
+  Vac, Sick, Item: TMenuItem;
 
   function Add(const Caption: string; Handler: TNotifyEvent; Parent: TMenuItem = nil): TMenuItem;
   begin
-    Result := TMenuItem.Create(Menu);
+    Result := TMenuItem.Create(FDayMenu);
     Result.Caption := Caption;
     Result.OnClick := Handler;
     if Parent = nil then
-      Menu.Items.Add(Result)
+      FDayMenu.Items.Add(Result)
     else
       Parent.Add(Result);
   end;
 
 begin
-  FContextDate := ADate;
-  Current := TJournalStore.Instance.AbsenceForDate(ADate);
-  Countable := IsCountableAbsenceDay(ADate);
-  Menu := TPopupMenu.Create(Self);
-  try
-    Add('Arbeitspakete' + Ellipsis, CtxPackages);
-    Add('-', nil);
-    Vac := Add('Urlaub', nil);
-    Item := Add('Ganzer Tag', CtxVacFull, Vac);
-    Item.Checked := (Current.AbsenceType = atVacation) and not Current.IsHalfDay;
-    Item.Enabled := Countable;
-    Item := Add('Halber Tag', CtxVacHalf, Vac);
-    Item.Checked := (Current.AbsenceType = atVacation) and Current.IsHalfDay;
-    Item.Enabled := Countable;
-    Sick := Add('Krankheit', nil);
-    Item := Add('Ganzer Tag', CtxSickFull, Sick);
-    Item.Checked := (Current.AbsenceType = atSick) and not Current.IsHalfDay;
-    Item.Enabled := Countable;
-    Item := Add('Halber Tag', CtxSickHalf, Sick);
-    Item.Checked := (Current.AbsenceType = atSick) and Current.IsHalfDay;
-    Item.Enabled := Countable;
-    Add('-', nil);
-    Add('Tagesgrenzen' + Ellipsis, CtxBounds);
-    Add('Zeitraum' + Ellipsis, CtxRange);
-    Item := Add('Status entfernen', CtxClear);
-    Item.Enabled := Current.IsSet;
-    Menu.Popup(ScreenPos.X, ScreenPos.Y);
-  finally
-    Menu.Free;
-  end;
+  FDayMenu.Items.Clear;
+  Current := TJournalStore.Instance.AbsenceForDate(FContextDate);
+  Countable := DateValid(FContextDate) and IsCountableAbsenceDay(FContextDate);
+  Add('Arbeitspakete' + Ellipsis, CtxPackages);
+  Add('-', nil);
+  Vac := Add('Urlaub', nil);
+  Item := Add('Ganzer Tag', CtxVacFull, Vac);
+  Item.Checked := (Current.AbsenceType = atVacation) and not Current.IsHalfDay;
+  Item.Enabled := Countable;
+  Item := Add('Halber Tag', CtxVacHalf, Vac);
+  Item.Checked := (Current.AbsenceType = atVacation) and Current.IsHalfDay;
+  Item.Enabled := Countable;
+  Sick := Add('Krankheit', nil);
+  Item := Add('Ganzer Tag', CtxSickFull, Sick);
+  Item.Checked := (Current.AbsenceType = atSick) and not Current.IsHalfDay;
+  Item.Enabled := Countable;
+  Item := Add('Halber Tag', CtxSickHalf, Sick);
+  Item.Checked := (Current.AbsenceType = atSick) and Current.IsHalfDay;
+  Item.Enabled := Countable;
+  Add('-', nil);
+  Add('Tagesgrenzen' + Ellipsis, CtxBounds);
+  Add('Zeitraum' + Ellipsis, CtxRange);
+  Item := Add('Status entfernen', CtxClear);
+  Item.Enabled := Current.IsSet;
+end;
+
+procedure TMonthViewFrame.GridResized(Sender: TObject);
+begin
+  FitGridStretchColumn(grdDays, ColHint);
 end;
 
 procedure TMonthViewFrame.CtxPackages(Sender: TObject);
@@ -624,6 +633,26 @@ begin
   finally
     Dlg.Free;
   end;
+end;
+
+procedure TMonthViewFrame.AbsenceClick(Sender: TObject);
+begin
+  OpenAbsenceDialog;
+end;
+
+procedure TMonthViewFrame.OpenAbsenceDialog;
+var
+  D: TDate;
+begin
+  D := DateFromRow(grdDays.Row);
+  if not DateValid(D) then
+  begin
+    if (YearOf(Date) = YearOf(FMonth)) and (MonthOf(Date) = MonthOf(FMonth)) then
+      D := Date
+    else
+      D := FMonth;
+  end;
+  OpenRangeDialog(D);
 end;
 
 procedure TMonthViewFrame.ApplyAbsence(const Dates: TArray<TDate>; const Absence: TAbsence);

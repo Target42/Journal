@@ -14,6 +14,7 @@ type
     miDatenordner: TMenuItem;
     miEinstellungen: TMenuItem;
     miTitel: TMenuItem;
+    miAbsence: TMenuItem;
     N1: TMenuItem;
     miRente: TMenuItem;
     miArbZG: TMenuItem;
@@ -52,6 +53,7 @@ type
     procedure ChooseDataPath(Sender: TObject);
     procedure OpenSettings(Sender: TObject);
     procedure OpenTitles(Sender: TObject);
+    procedure OpenAbsence(Sender: TObject);
     procedure OpenRetirement(Sender: TObject);
     procedure OpenArbzg(Sender: TObject);
     procedure DownloadPublicHolidays(Sender: TObject);
@@ -106,6 +108,7 @@ begin
   miDatenordner.OnClick := ChooseDataPath;
   miEinstellungen.OnClick := OpenSettings;
   miTitel.OnClick := OpenTitles;
+  miAbsence.OnClick := OpenAbsence;
   miRente.OnClick := OpenRetirement;
   miArbZG.OnClick := OpenArbzg;
   miFeiertage.OnClick := DownloadPublicHolidays;
@@ -269,6 +272,11 @@ begin
   finally
     Dlg.Free;
   end;
+end;
+
+procedure TMainForm.OpenAbsence(Sender: TObject);
+begin
+  FMonthView.OpenAbsenceDialog;
 end;
 
 procedure TMainForm.OpenRetirement(Sender: TObject);

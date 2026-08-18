@@ -17,6 +17,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QTabWidget>
 #include <QTimeEdit>
 #include <QVBoxLayout>
 #include <array>
@@ -38,6 +39,7 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     setWindowTitle(QStringLiteral("Einstellungen"));
     setModal(true);
     setMinimumWidth(640);
+    resize(680, 560);
     setupUi();
     loadFromSettings();
 }
@@ -48,8 +50,14 @@ void SettingsDialog::setupUi()
     root->setSpacing(12);
 
     const QLocale locale;
+    auto *tabs = new QTabWidget(this);
+    root->addWidget(tabs, 1);
 
-    auto *stateGroup = new QGroupBox(QStringLiteral("Bundesland"), this);
+    auto *workPage = new QWidget(tabs);
+    auto *workLayout = new QVBoxLayout(workPage);
+    workLayout->setContentsMargins(8, 12, 8, 8);
+
+    auto *stateGroup = new QGroupBox(QStringLiteral("Bundesland"), workPage);
     auto *stateLayout = new QVBoxLayout(stateGroup);
     auto *stateForm = new QFormLayout();
     m_stateCombo = new QComboBox(stateGroup);
@@ -65,9 +73,9 @@ void SettingsDialog::setupUi()
         stateGroup);
     stateHint->setWordWrap(true);
     stateLayout->addWidget(stateHint);
-    root->addWidget(stateGroup);
+    workLayout->addWidget(stateGroup);
 
-    auto *daysGroup = new QGroupBox(QStringLiteral("Arbeitstage"), this);
+    auto *daysGroup = new QGroupBox(QStringLiteral("Arbeitstage"), workPage);
     auto *daysLayout = new QHBoxLayout(daysGroup);
     daysLayout->setSpacing(12);
     for (int i = 0; i < 7; ++i) {
@@ -85,9 +93,9 @@ void SettingsDialog::setupUi()
         });
     }
     daysLayout->addStretch();
-    root->addWidget(daysGroup);
+    workLayout->addWidget(daysGroup);
 
-    auto *timeGroup = new QGroupBox(QStringLiteral("Soll-Arbeitszeit"), this);
+    auto *timeGroup = new QGroupBox(QStringLiteral("Soll-Arbeitszeit"), workPage);
     auto *timeLayout = new QVBoxLayout(timeGroup);
 
     m_evenRadio = new QRadioButton(QStringLiteral("Gleichmäßige Verteilung"), timeGroup);
@@ -136,9 +144,15 @@ void SettingsDialog::setupUi()
         hoursGrid->addWidget(m_dayHoursSpins[i], 1, i);
     }
     timeLayout->addWidget(m_individualPane);
-    root->addWidget(timeGroup);
+    workLayout->addWidget(timeGroup);
+    workLayout->addStretch();
+    tabs->addTab(workPage, QStringLiteral("Arbeitszeit"));
 
-    auto *vacationGroup = new QGroupBox(QStringLiteral("Urlaub"), this);
+    auto *vacationPage = new QWidget(tabs);
+    auto *vacationLayout = new QVBoxLayout(vacationPage);
+    vacationLayout->setContentsMargins(8, 12, 8, 8);
+
+    auto *vacationGroup = new QGroupBox(QStringLiteral("Jahresurlaub"), vacationPage);
     auto *vacationForm = new QFormLayout(vacationGroup);
     m_vacationSpin = new QDoubleSpinBox(vacationGroup);
     m_vacationSpin->setRange(0.0, 365.0);
@@ -147,9 +161,39 @@ void SettingsDialog::setupUi()
     m_vacationSpin->setAlignment(Qt::AlignRight);
     m_vacationSpin->setMinimumWidth(100);
     vacationForm->addRow(QStringLiteral("Jahresurlaubstage:"), m_vacationSpin);
-    root->addWidget(vacationGroup);
+    vacationLayout->addWidget(vacationGroup);
 
-    auto *overtimeGroup = new QGroupBox(QStringLiteral("Überstundenkonto"), this);
+    auto *eveGroup = new QGroupBox(QStringLiteral("Heiligabend und Silvester"), vacationPage);
+    auto *eveLayout = new QVBoxLayout(eveGroup);
+    auto *eveForm = new QFormLayout();
+    m_eveCombo = new QComboBox(eveGroup);
+    m_eveCombo->setMinimumWidth(320);
+    m_eveCombo->addItem(QStringLiteral("Normaler Arbeitstag"),
+                        static_cast<int>(EveDayTreatment::Normal));
+    m_eveCombo->addItem(QStringLiteral("Jeweils ein Urlaubstag"),
+                        static_cast<int>(EveDayTreatment::FullVacation));
+    m_eveCombo->addItem(QStringLiteral("Jeweils ein halber Urlaubstag"),
+                        static_cast<int>(EveDayTreatment::HalfVacation));
+    m_eveCombo->addItem(QStringLiteral("Vollständig frei ohne Arbeitspflicht"),
+                        static_cast<int>(EveDayTreatment::CompanyFree));
+    eveForm->addRow(QStringLiteral("24.12. und 31.12.:"), m_eveCombo);
+    eveLayout->addLayout(eveForm);
+    auto *eveHint = new QLabel(
+        QStringLiteral("Gilt nur, wenn der Tag ein Arbeitstag und kein gesetzlicher Feiertag ist. "
+                       "Weihnachten (25./26.12.) bleibt Feiertag. Eine manuell gesetzte "
+                       "Abwesenheit an diesem Tag hat Vorrang."),
+        eveGroup);
+    eveHint->setWordWrap(true);
+    eveLayout->addWidget(eveHint);
+    vacationLayout->addWidget(eveGroup);
+    vacationLayout->addStretch();
+    tabs->addTab(vacationPage, QStringLiteral("Urlaub"));
+
+    auto *overtimePage = new QWidget(tabs);
+    auto *overtimePageLayout = new QVBoxLayout(overtimePage);
+    overtimePageLayout->setContentsMargins(8, 12, 8, 8);
+
+    auto *overtimeGroup = new QGroupBox(QStringLiteral("Überstundenkonto"), overtimePage);
     auto *overtimeLayout = new QVBoxLayout(overtimeGroup);
     m_overtimeLimitsCheck =
         new QCheckBox(QStringLiteral("Saldo zum Periodenende auf Grenzen kappen"), overtimeGroup);
@@ -192,9 +236,15 @@ void SettingsDialog::setupUi()
         overtimeGroup);
     overtimeHint->setWordWrap(true);
     overtimeLayout->addWidget(overtimeHint);
-    root->addWidget(overtimeGroup);
+    overtimePageLayout->addWidget(overtimeGroup);
+    overtimePageLayout->addStretch();
+    tabs->addTab(overtimePage, QStringLiteral("Konto"));
 
-    auto *boundsGroup = new QGroupBox(QStringLiteral("Tagesgrenzen"), this);
+    auto *dayPage = new QWidget(tabs);
+    auto *dayLayout = new QVBoxLayout(dayPage);
+    dayLayout->setContentsMargins(8, 12, 8, 8);
+
+    auto *boundsGroup = new QGroupBox(QStringLiteral("Tagesgrenzen"), dayPage);
     auto *boundsLayout = new QVBoxLayout(boundsGroup);
     auto *boundsRow = new QHBoxLayout();
     boundsRow->addWidget(new QLabel(QStringLiteral("Von:"), boundsGroup));
@@ -217,9 +267,9 @@ void SettingsDialog::setupUi()
         boundsGroup);
     boundsHint->setWordWrap(true);
     boundsLayout->addWidget(boundsHint);
-    root->addWidget(boundsGroup);
+    dayLayout->addWidget(boundsGroup);
 
-    auto *pauseGroup = new QGroupBox(QStringLiteral("Pausen"), this);
+    auto *pauseGroup = new QGroupBox(QStringLiteral("Pausen"), dayPage);
     auto *pauseLayout = new QVBoxLayout(pauseGroup);
     auto *pauseGrid = new QGridLayout();
     pauseGrid->setHorizontalSpacing(8);
@@ -254,7 +304,9 @@ void SettingsDialog::setupUi()
         pauseGroup);
     pauseHint->setWordWrap(true);
     pauseLayout->addWidget(pauseHint);
-    root->addWidget(pauseGroup);
+    dayLayout->addWidget(pauseGroup);
+    dayLayout->addStretch();
+    tabs->addTab(dayPage, QStringLiteral("Tag"));
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     if (auto *ok = buttons->button(QDialogButtonBox::Ok)) {
@@ -319,6 +371,8 @@ void SettingsDialog::loadFromSettings()
     }
 
     m_vacationSpin->setValue(ws.annualVacationDays);
+    const int eveIndex = m_eveCombo->findData(static_cast<int>(ws.eveDayTreatment));
+    m_eveCombo->setCurrentIndex(eveIndex >= 0 ? eveIndex : 0);
     m_weeklyHoursSpin->setValue(ws.weeklyHours);
 
     for (int i = 0; i < 7; ++i) {
@@ -370,6 +424,7 @@ void SettingsDialog::saveToSettings()
 {
     WorkSettings ws;
     ws.annualVacationDays = m_vacationSpin->value();
+    ws.eveDayTreatment = static_cast<EveDayTreatment>(m_eveCombo->currentData().toInt());
     ws.workTimeMode = m_individualRadio->isChecked() ? WorkTimeMode::Individual
                                                      : WorkTimeMode::Even;
     ws.weeklyHours = m_weeklyHoursSpin->value();

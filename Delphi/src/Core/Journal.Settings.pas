@@ -48,6 +48,8 @@ type
     function WorkDayCount: Integer;
     function TargetHoursForWeekday(DayOfWeek: Integer): Double;
     function TargetHoursForDate(const ADate: TDate): Double;
+    function ImpliedAbsenceForDate(const ADate: TDate): TAbsence;
+    function IsCompanyFreeEveDate(const ADate: TDate): Boolean;
   end;
 
 implementation
@@ -299,6 +301,29 @@ begin
   end;
 end;
 
+function EveTreatmentFromString(const S: string): TEveDayTreatment;
+begin
+  if SameText(S, 'full') then
+    Result := edtFullVacation
+  else if SameText(S, 'half') then
+    Result := edtHalfVacation
+  else if SameText(S, 'free') then
+    Result := edtCompanyFree
+  else
+    Result := edtNormal;
+end;
+
+function EveTreatmentToString(Treatment: TEveDayTreatment): string;
+begin
+  case Treatment of
+    edtFullVacation: Result := 'full';
+    edtHalfVacation: Result := 'half';
+    edtCompanyFree: Result := 'free';
+  else
+    Result := 'normal';
+  end;
+end;
+
 function ReadSubFloat(const SubKey, ValueName: string; Default: Double): Double;
 var
   S: string;
@@ -428,6 +453,7 @@ var
   Mode: string;
 begin
   Result.AnnualVacationDays := ReadSubFloat('vacation', 'annualDays', 30);
+  Result.EveDayTreatment := EveTreatmentFromString(ReadSubString('vacation', 'eveDays', 'normal'));
   Mode := ReadSubString('workTime', 'mode', 'even');
   if SameText(Mode, 'individual') then
     Result.WorkTimeMode := wtmIndividual
@@ -447,6 +473,7 @@ var
   Mode: string;
 begin
   WriteSubFloat('vacation', 'annualDays', Settings.AnnualVacationDays);
+  WriteSubString('vacation', 'eveDays', EveTreatmentToString(Settings.EveDayTreatment));
   if Settings.WorkTimeMode = wtmIndividual then
     Mode := 'individual'
   else
@@ -626,7 +653,36 @@ function TAppSettings.TargetHoursForDate(const ADate: TDate): Double;
 begin
   if not DateValid(ADate) then
     Exit(0);
+  if IsEveDate(ADate) and (WorkSettings.EveDayTreatment = edtCompanyFree) then
+    Exit(0);
   Result := TargetHoursForWeekday(IsoWeekDay(ADate));
+end;
+
+function TAppSettings.ImpliedAbsenceForDate(const ADate: TDate): TAbsence;
+begin
+  Result := Default(TAbsence);
+  if not IsEveDate(ADate) or (TargetHoursForWeekday(IsoWeekDay(ADate)) <= 0) then
+    Exit;
+  case WorkSettings.EveDayTreatment of
+    edtFullVacation:
+      begin
+        Result.AbsenceType := atVacation;
+        Result.Fraction := 1;
+      end;
+    edtHalfVacation:
+      begin
+        Result.AbsenceType := atVacation;
+        Result.Fraction := 0.5;
+      end;
+  else
+    { normal / frei: keine automatische Abwesenheit }
+  end;
+end;
+
+function TAppSettings.IsCompanyFreeEveDate(const ADate: TDate): Boolean;
+begin
+  Result := IsEveDate(ADate) and (WorkSettings.EveDayTreatment = edtCompanyFree)
+    and (TargetHoursForWeekday(IsoWeekDay(ADate)) > 0);
 end;
 
 initialization

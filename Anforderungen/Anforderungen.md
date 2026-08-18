@@ -124,7 +124,7 @@ Unter **Einstellungen → Pausen** können bis zu **drei benannte Pausenfenster*
 - Ein Häkchen fügt die Pause genau in diesem Zeitraum ein bzw. entfernt die **überdeckende** Pause wieder. Manuelles Einfügen und Bearbeiten über den Pause-Dialog bleibt unverändert.
 - Das Häkchen ist gesetzt, wenn eine Pause das Vorlagenfenster **vollständig überdeckt** (Pause beginnt nicht später und endet nicht früher). Verschobene Zeiten (z. B. 11:32–12:05) gelten nicht als diese Vorlage.
 - In der Paketliste und auf dem Pausenstreifen erscheint der Vorlagenname, wenn die Pause das Fenster überdeckt.
-- Der Hinweis „übliche Pause verpasst“ gilt **je Vorlage**: Arbeit begann vor dem Fenster, um dessen Beginn wird noch gearbeitet, und es startet dort keine Pause bzw. keine Pause überdeckt das Fenster.
+- Der Hinweis „übliche Pause verpasst“ gilt **je Vorlage**, aber **nur wenn die gesetzliche Pause (§4) noch nicht erfüllt ist**: Arbeit begann vor dem Fenster, um dessen Beginn wird noch gearbeitet, und es startet dort keine Pause bzw. keine Pause überdeckt das Fenster. Ist die 30- bzw. 45-Minuten-Pause bereits genommen (und keine ununterbrochene Arbeit über 6 Stunden), bleibt der Hinweis aus – auch wenn z. B. die Frühstücksvorlage ungenutzt bleibt.
 
 ---
 
@@ -142,7 +142,7 @@ Journal prüft die erfasste **Rohzeit** gegen das Arbeitszeitgesetz. Das Überst
 | Thema | Regel |
 |-------|--------|
 | Pause §4 | 30 Min. bei mehr als 6 h, 45 Min. bei mehr als 9 h; nicht länger als 6 h ununterbrochen |
-| Höchstarbeitszeit §3 | 8 h je Werktag (Mo–Sa), höchstens 10 h; Ausgleich Ø 8 h in 6 Kalendermonaten oder 24 Wochen |
+| Höchstarbeitszeit §3 | Höchstens 10 h je Kalendertag (täglicher Hinweis). 8 h je Werktag (Mo–Sa) ist der Durchschnitt: Ausgleich Ø 8 h in 6 Kalendermonaten oder 24 Wochen, gezählt in **Datei → ArbZG…**, kein täglicher Hinweis bei mehr als 8 h |
 | Ruhezeit §5 | 11 Stunden zwischen letztem Ende und nächstem Beginn |
 | Sonn-/Feiertag §9 / §11 | Arbeit kennzeichnen; Ersatzruhe (So: 2 Wochen, Feiertag: 8 Wochen); mindestens 15 freie Sonntage im Jahr |
 | Nachtarbeit §6 | 23:00–6:00; mehr als 2 Stunden = Nachtarbeit; ab 48 Tagen im Jahr Nachtarbeitnehmer |
@@ -185,11 +185,26 @@ Bei überlappenden Arbeitspaketen zählt die Zeit in Diagrammen immer für das *
 - **Urlaubskonto:** Jahresanspruch ist konfigurierbar (z. B. 30 Tage).
 - **Geplant** = Urlaubstag in der Zukunft; **genommen** = Urlaubstag in der Vergangenheit.
 
----
+## Heiligabend und Silvester
+
+Der **24.12.** (Heiligabend) und der **31.12.** (Silvester) sind in den meisten Bundesländern **keine** gesetzlichen Feiertage. Weihnachten (25./26.12.) bleibt Feiertag (Soll = 0).
+
+Unter **Einstellungen → Urlaub** gilt für beide Tage dieselbe Regel, sofern der Tag ein Arbeitstag und kein Feiertag ist:
+
+| Einstellung | Soll | Urlaubskonto |
+|-------------|------|----------------|
+| **Normaler Arbeitstag** (Vorgabe) | wie an diesem Wochentag | keine automatische Anrechnung |
+| **Jeweils ein Urlaubstag** | volle Tages-Sollzeit, Ist = Soll | 1 Tag je betroffenem Datum |
+| **Jeweils ein halber Urlaubstag** | halber Tag wie bei manuellem halben Urlaub | ½ Tag je betroffenem Datum |
+| **Vollständig frei ohne Arbeitspflicht** | 0 | kein Abzug |
+
+Eine **manuell** gesetzte Abwesenheit (Urlaub/Krankheit) an diesem Tag hat Vorrang vor der automatischen Anrechnung. Fällt der Tag auf ein Wochenende bzw. einen arbeitsfreien Wochentag, ändert sich nichts.
 
 # GUI
 
-Alle Bereiche werden **gleichzeitig** angezeigt (keine Tabs):
+Die **Einstellungen** sind in **Registerkarten** gegliedert (Arbeitszeit, Urlaub, Konto, Tag), damit der Dialog nicht zu einer langen Liste wird.
+
+Das **Hauptfenster** zeigt alle Bereiche **gleichzeitig** (keine Tabs):
 
 | Bereich | Position |
 |---------|----------|
@@ -211,6 +226,8 @@ Die Monatsübersicht zeigt **immer alle Tage** des gewählten Monats:
 - je Tag: Arbeitsbeginn und -ende, geleistete Stunden und resultierende Mehr-/Minderstunden.
 
 **Doppelklick** auf einen Tag (oder Kontextmenü → Arbeitspakete…) öffnet ein Fenster mit allen Arbeitspaketen des Tages; dort können Pakete hinzugefügt, bearbeitet und gelöscht werden.
+
+**Urlaub / Krankheit:** Schaltfläche in der Monatsübersicht, Menü **Datei → Urlaub / Krankheit…** oder Kontextmenü auf einem Tag (ganzer/halber Tag, bzw. **Zeitraum…** für mehrere Tage). Beim Setzen zählen nur Arbeitstage ohne Feiertag.
 
 **Einfärbung:** Wochenenden, Feiertage und Schulferientage erhalten jeweils eine Hintergrundfarbe.  
 Feiertags- und Feriennamen werden in der Hinweis-Spalte angezeigt.

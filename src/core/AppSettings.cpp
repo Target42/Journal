@@ -14,6 +14,35 @@
 #include <array>
 
 namespace {
+QString eveTreatmentToString(EveDayTreatment treatment)
+{
+    switch (treatment) {
+    case EveDayTreatment::FullVacation:
+        return QStringLiteral("full");
+    case EveDayTreatment::HalfVacation:
+        return QStringLiteral("half");
+    case EveDayTreatment::CompanyFree:
+        return QStringLiteral("free");
+    case EveDayTreatment::Normal:
+        break;
+    }
+    return QStringLiteral("normal");
+}
+
+EveDayTreatment eveTreatmentFromString(const QString &value)
+{
+    if (value == QLatin1String("full")) {
+        return EveDayTreatment::FullVacation;
+    }
+    if (value == QLatin1String("half")) {
+        return EveDayTreatment::HalfVacation;
+    }
+    if (value == QLatin1String("free")) {
+        return EveDayTreatment::CompanyFree;
+    }
+    return EveDayTreatment::Normal;
+}
+
 QString defaultDataPath()
 {
     return QDir::cleanPath(
@@ -190,6 +219,8 @@ WorkSettings AppSettings::workSettings() const
 
     ws.annualVacationDays =
         settings.value(QStringLiteral("vacation/annualDays"), 30.0).toDouble();
+    ws.eveDayTreatment = eveTreatmentFromString(
+        settings.value(QStringLiteral("vacation/eveDays"), QStringLiteral("normal")).toString());
 
     const QString mode =
         settings.value(QStringLiteral("workTime/mode"), QStringLiteral("even")).toString();
@@ -217,6 +248,7 @@ void AppSettings::setWorkSettings(const WorkSettings &ws)
 {
     QSettings settings;
     settings.setValue(QStringLiteral("vacation/annualDays"), ws.annualVacationDays);
+    settings.setValue(QStringLiteral("vacation/eveDays"), eveTreatmentToString(ws.eveDayTreatment));
     settings.setValue(QStringLiteral("workTime/mode"),
                       ws.workTimeMode == WorkTimeMode::Individual
                           ? QStringLiteral("individual")
@@ -469,5 +501,33 @@ double AppSettings::targetHoursForDate(const QDate &date) const
     if (!date.isValid()) {
         return 0.0;
     }
+    if (isEveDate(date)
+        && workSettings().eveDayTreatment == EveDayTreatment::CompanyFree) {
+        return 0.0;
+    }
     return targetHoursForWeekday(date.dayOfWeek());
+}
+
+Absence AppSettings::impliedAbsenceForDate(const QDate &date) const
+{
+    if (!isEveDate(date) || targetHoursForWeekday(date.dayOfWeek()) <= 0.0) {
+        return {};
+    }
+    switch (workSettings().eveDayTreatment) {
+    case EveDayTreatment::FullVacation:
+        return {AbsenceType::Vacation, 1.0};
+    case EveDayTreatment::HalfVacation:
+        return {AbsenceType::Vacation, 0.5};
+    case EveDayTreatment::Normal:
+    case EveDayTreatment::CompanyFree:
+        break;
+    }
+    return {};
+}
+
+bool AppSettings::isCompanyFreeEveDate(const QDate &date) const
+{
+    return isEveDate(date)
+        && workSettings().eveDayTreatment == EveDayTreatment::CompanyFree
+        && targetHoursForWeekday(date.dayOfWeek()) > 0.0;
 }

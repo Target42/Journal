@@ -19,11 +19,6 @@ const
   NightWorkerDaysPerYear = 48;
 
 type
-  TPauseInterval = record
-    StartMinute: Integer;
-    EndMinute: Integer;
-  end;
-
   TArbzgDay = record
     Date: TDate;
     HasWork: Boolean;
@@ -347,7 +342,8 @@ begin
   Needed := RequiredPauseMinutes(Result.RawWorkMinutes);
   Result.RequiredPauseMissing := (Needed > 0) and (Result.ActualPauseMinutes < Needed);
   PauseWindow := TAppSettings.Instance.UsualPauseWindow;
-  if Result.HasWork and (Result.FirstWorkMinute >= 0) and
+  if (Result.RequiredPauseMissing or Result.SixHoursUninterrupted) and
+     Result.HasWork and (Result.FirstWorkMinute >= 0) and
      (Result.FirstWorkMinute < PauseWindow.StartMinute) and
      (PauseWindow.StartMinute >= 0) and (PauseWindow.StartMinute <= High(Covered)) and
      Covered[PauseWindow.StartMinute] then
@@ -371,9 +367,7 @@ begin
   if Result.SixHoursUninterrupted then
     AddText(Result.Issues, 'Mehr als 6 h ohne Unterbrechung (§4)');
   if Result.OverTenHours then
-    AddText(Result.Issues, 'Mehr als 10 h Arbeitszeit (§3)')
-  else if Result.OverEightHours then
-    AddText(Result.Notes, 'Mehr als 8 h (§3, Ausgleich nötig)');
+    AddText(Result.Issues, 'Mehr als 10 h Arbeitszeit (§3)');
   if Result.RestTooShort then
     AddText(Result.Issues, Format('Ruhezeit unter 11 h (§5): %s',
       [FormatDuration(Result.RestMinutesBefore)]));

@@ -4,7 +4,9 @@
 #include <QVector>
 #include <QWidget>
 
+class QEvent;
 class QLabel;
+class QPushButton;
 class QTableWidget;
 struct Absence;
 
@@ -21,14 +23,18 @@ public slots:
     void setMonth(int year, int month);
     void selectDate(const QDate &date);
     void refresh();
+    void openAbsenceDialog();
 
 signals:
     void dayActivated(const QDate &date);
 
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+
 private slots:
     void onRowClicked(int row, int column);
     void onRowDoubleClicked(int row, int column);
-    void showDayContextMenu(const QPoint &pos);
+    void popupDayMenu(const QPoint &viewportPos);
 
 private:
     void setupUi();
@@ -45,5 +51,6 @@ private:
 
     QDate m_month;
     QLabel *m_summaryLabel = nullptr;
+    QPushButton *m_absenceButton = nullptr;
     QTableWidget *m_dayTable = nullptr;
 };

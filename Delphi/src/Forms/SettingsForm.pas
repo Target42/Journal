@@ -1,4 +1,4 @@
-unit SettingsForm;
+﻿unit SettingsForm;
 
 interface
 
@@ -9,6 +9,11 @@ uses
 
 type
   TSettingsForm = class(TForm)
+    pages: TPageControl;
+    tabWork: TTabSheet;
+    tabVacation: TTabSheet;
+    tabOvertime: TTabSheet;
+    tabDay: TTabSheet;
     grpBundesland: TGroupBox;
     lblArbeitsort: TLabel;
     cbState: TComboBox;
@@ -44,6 +49,10 @@ type
     grpUrlaub: TGroupBox;
     lblUrlaub: TLabel;
     nbVacation: TNumberBox;
+    grpEve: TGroupBox;
+    lblEve: TLabel;
+    cbEve: TComboBox;
+    lblEveHint: TLabel;
     grpOvertime: TGroupBox;
     chkOvertimeLimits: TCheckBox;
     lblGeltung: TLabel;
@@ -108,6 +117,11 @@ begin
   cbPeriod.Items.Clear;
   cbPeriod.Items.Add('Monatlich');
   cbPeriod.Items.Add('Quartalsweise');
+  cbEve.Items.Clear;
+  cbEve.Items.Add('Normaler Arbeitstag');
+  cbEve.Items.Add('Jeweils ein Urlaubstag');
+  cbEve.Items.Add('Jeweils ein halber Urlaubstag');
+  cbEve.Items.Add('Vollst' + #$00E4 + 'ndig frei ohne Arbeitspflicht');
   for I := 0 to 6 do
     FWorkDays[I].OnClick := WorkDayToggled;
   rbEven.OnClick := UpdateModeUi;
@@ -136,6 +150,13 @@ begin
     if States[I].Code = Code then
       cbState.ItemIndex := I;
   nbVacation.Value := WS.AnnualVacationDays;
+  case WS.EveDayTreatment of
+    edtFullVacation: cbEve.ItemIndex := 1;
+    edtHalfVacation: cbEve.ItemIndex := 2;
+    edtCompanyFree: cbEve.ItemIndex := 3;
+  else
+    cbEve.ItemIndex := 0;
+  end;
   nbWeekly.Value := WS.WeeklyHours;
   for I := 0 to 6 do
   begin
@@ -175,6 +196,13 @@ var
 begin
   WS := Default(TWorkSettings);
   WS.AnnualVacationDays := nbVacation.Value;
+  case cbEve.ItemIndex of
+    1: WS.EveDayTreatment := edtFullVacation;
+    2: WS.EveDayTreatment := edtHalfVacation;
+    3: WS.EveDayTreatment := edtCompanyFree;
+  else
+    WS.EveDayTreatment := edtNormal;
+  end;
   if rbIndividual.Checked then
     WS.WorkTimeMode := wtmIndividual
   else
@@ -241,7 +269,7 @@ var
 begin
   Count := SelectedWorkDayCount;
   if Count = 0 then
-    lblEvenPreview.Caption := 'Bitte mindestens einen Arbeitstag auswählen.'
+    lblEvenPreview.Caption := 'Bitte mindestens einen Arbeitstag ausw' + #$00E4 + 'hlen.'
   else
     lblEvenPreview.Caption := Format('Entspricht %s h je Arbeitstag (%d Arbeitstage).',
       [FormatHours(EvenHoursPerDay), Count]);
@@ -303,7 +331,7 @@ procedure TSettingsForm.OkClick(Sender: TObject);
 begin
   if SelectedWorkDayCount = 0 then
   begin
-    MessageDlg('Bitte mindestens einen Arbeitstag auswählen.', mtWarning, [mbOK], 0);
+    MessageDlg('Bitte mindestens einen Arbeitstag ausw' + #$00E4 + 'hlen.', mtWarning, [mbOK], 0);
     Exit;
   end;
   if TimeToMinute(dtpStart.Time) >= TimeToMinute(dtpEnd.Time) then
@@ -320,7 +348,7 @@ begin
   end;
   if chkOvertimeLimits.Checked and (nbMin.Value > nbMax.Value) then
   begin
-    MessageDlg('Die Untergrenze des Überstundenkontos muss kleiner oder gleich der Obergrenze sein.',
+    MessageDlg('Die Untergrenze des ' + #$00DC + 'berstundenkontos muss kleiner oder gleich der Obergrenze sein.',
       mtWarning, [mbOK], 0);
     Exit;
   end;

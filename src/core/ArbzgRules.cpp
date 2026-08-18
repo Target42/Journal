@@ -226,28 +226,30 @@ ArbzgDay ArbzgCompliance::assessDay(const QDate &date)
     const int needed = requiredPauseMinutes(day.rawWorkMinutes);
     day.requiredPauseMissing = needed > 0 && day.actualPauseMinutes < needed;
 
-    const QVector<char> &coveredRef = covered;
-    for (const auto &preset : AppSettings::instance().pausePresets()) {
-        if (day.firstWorkMinute < 0 || day.firstWorkMinute >= preset.startMinute
-            || preset.startMinute < 0 || preset.startMinute >= coveredRef.size()
-            || !coveredRef[preset.startMinute]) {
-            continue;
-        }
-        bool startedInWindow = false;
-        for (const auto &pause : day.pauses) {
-            if ((pause.startMinute >= preset.startMinute && pause.startMinute <= preset.endMinute)
-                || (pause.startMinute <= preset.startMinute
-                    && pause.endMinute >= preset.endMinute)) {
-                startedInWindow = true;
-                break;
+    if (day.requiredPauseMissing || day.sixHoursUninterrupted) {
+        const QVector<char> &coveredRef = covered;
+        for (const auto &preset : AppSettings::instance().pausePresets()) {
+            if (day.firstWorkMinute < 0 || day.firstWorkMinute >= preset.startMinute
+                || preset.startMinute < 0 || preset.startMinute >= coveredRef.size()
+                || !coveredRef[preset.startMinute]) {
+                continue;
             }
-        }
-        if (!startedInWindow) {
-            day.usualPauseMissed = true;
-            day.notes << QStringLiteral("Keine Pause im Fenster %1 %2–%3")
-                             .arg(preset.label(),
-                                  formatClock(preset.startMinute),
-                                  formatClock(preset.endMinute));
+            bool startedInWindow = false;
+            for (const auto &pause : day.pauses) {
+                if ((pause.startMinute >= preset.startMinute && pause.startMinute <= preset.endMinute)
+                    || (pause.startMinute <= preset.startMinute
+                        && pause.endMinute >= preset.endMinute)) {
+                    startedInWindow = true;
+                    break;
+                }
+            }
+            if (!startedInWindow) {
+                day.usualPauseMissed = true;
+                day.notes << QStringLiteral("Keine Pause im Fenster %1 %2–%3")
+                                 .arg(preset.label(),
+                                      formatClock(preset.startMinute),
+                                      formatClock(preset.endMinute));
+            }
         }
     }
 
@@ -267,8 +269,6 @@ ArbzgDay ArbzgCompliance::assessDay(const QDate &date)
     }
     if (day.overTenHours) {
         day.issues << QStringLiteral("Mehr als 10 h Arbeitszeit (§3)");
-    } else if (day.overEightHours) {
-        day.notes << QStringLiteral("Mehr als 8 h (§3, Ausgleich nötig)");
     }
     if (day.restTooShort) {
         day.issues << QStringLiteral("Ruhezeit unter 11 h (§5): %1")

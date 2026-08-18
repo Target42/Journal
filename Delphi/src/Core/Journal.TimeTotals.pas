@@ -45,6 +45,7 @@ type
     function MonthTotals(AYear, AMonth: Integer): TMonthTotals;
     function YearTotals(AYear: Integer): TYearTotals;
     function CreditedHoursForDate(const ADate: TDate): Double;
+    function EffectiveAbsenceForDate(const ADate: TDate): TAbsence;
     function AccountTrend(WorkedDays: Integer = 30): TAccountTrend;
   end;
 
@@ -112,6 +113,16 @@ begin
     Result := Target
   else
     Result := WorkHours + Target * Absence.Fraction;
+end;
+
+function ResolveAbsence(const ADate: TDate): TAbsence;
+begin
+  Result := TJournalStore.Instance.AbsenceForDate(ADate);
+  if Result.IsSet then
+    Exit;
+  if TCalendarService.Instance.IsPublicHoliday(ADate) then
+    Exit(Default(TAbsence));
+  Result := TAppSettings.Instance.ImpliedAbsenceForDate(ADate);
 end;
 
 constructor TTimeTotals.Create;
@@ -314,7 +325,15 @@ begin
   else
     Target := TAppSettings.Instance.TargetHoursForDate(ADate);
   WorkHours := TJournalStore.Instance.ActualHoursForDate(ADate);
-  Result := CreditedHours(ADate, Target, WorkHours, TJournalStore.Instance.AbsenceForDate(ADate));
+  Result := CreditedHours(ADate, Target, WorkHours,
+    ResolveAbsence(ADate));
+end;
+
+function TTimeTotals.EffectiveAbsenceForDate(const ADate: TDate): TAbsence;
+begin
+  if not DateValid(ADate) then
+    Exit(Default(TAbsence));
+  Result := ResolveAbsence(ADate);
 end;
 
 function TTimeTotals.AccountTrend(WorkedDays: Integer): TAccountTrend;
@@ -343,7 +362,7 @@ begin
       WorkHours := TJournalStore.Instance.ActualHoursForDate(ADate);
       if WorkHours > 0.005 then
       begin
-        Absence := TJournalStore.Instance.AbsenceForDate(ADate);
+        Absence := ResolveAbsence(ADate);
         if not (Absence.IsSet and not Absence.IsHalfDay) then
         begin
           if TCalendarService.Instance.IsPublicHoliday(ADate) then
@@ -407,7 +426,7 @@ begin
       Target := 0
     else
       Target := TAppSettings.Instance.TargetHoursForDate(ADate);
-    Absence := TJournalStore.Instance.AbsenceForDate(ADate);
+    Absence := ResolveAbsence(ADate);
     Actual := CreditedHours(ADate, Target, TJournalStore.Instance.ActualHoursForDate(ADate), Absence);
     Result.TargetHours := Result.TargetHours + Target;
     Result.ActualHours := Result.ActualHours + Actual;
