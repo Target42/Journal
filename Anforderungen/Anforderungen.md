@@ -200,6 +200,37 @@ Unter **Einstellungen → Urlaub** gilt für beide Tage dieselbe Regel, sofern d
 
 Eine **manuell** gesetzte Abwesenheit (Urlaub/Krankheit) an diesem Tag hat Vorrang vor der automatischen Anrechnung. Fällt der Tag auf ein Wochenende bzw. einen arbeitsfreien Wochentag, ändert sich nichts.
 
+---
+
+# Termine
+
+Journal ist kein Kalender. Termine und regelmäßige Meetings dienen nur der **Orientierung** (wie Schulferien): sichtbar, ohne Einfluss auf die Zeitrechnung.
+
+Erfasste Arbeit bleibt bei den **Arbeitspaketen**. Ein bereits abgeleistetes Meeting wird weiterhin als Paket eingetragen. Termine zeigen die **Vorschau** (z. B. Stand-up, Jour fixe), auch an Tagen ohne erfasste Pakete.
+
+## Eigenschaften
+
+- Jeder Termin hat einen **Titel** sowie **Beginn** und **Ende** (Uhrzeit, minutengenau).
+- **Einmalig:** gilt nur an einem Datum.
+- **Wöchentlich:** gilt an ausgewählten Wochentagen (Mo–So, auch mehrere) zur gleichen Uhrzeit. Keine weiteren Rhythmen (kein 14-tägig, kein monatlich).
+- Termine dürfen sich untereinander und mit Arbeitspaketen **überlappen**.
+
+## Keine Zeitrechnung
+
+Termine haben **keinen Einfluss** auf Soll, Ist, Saldo, Überstundenkonto, Pausenabzug oder ArbZG.  
+Sie werden **nicht** automatisch als Arbeitspakete angelegt.
+
+Es gibt **keinen** Import fremder Kalender (Outlook, Google o. Ä.), keine Einladungen und keine Erinnerungen.
+
+## Verwaltung
+
+Menü: **Datei → Termine…** (anlegen, bearbeiten, löschen).  
+In der Tagesübersicht kann über das Kontextmenü ein **einmaliger** Termin an der geklickten Uhrzeit angelegt werden.
+
+Speicherung lokal als JSON, **getrennt** von den Monatsdateien. Änderungen an Terminen lösen **keine** Neuberechnung von Monat oder Jahr aus.
+
+---
+
 # GUI
 
 Die **Einstellungen** sind in **Registerkarten** gegliedert (Arbeitszeit, Urlaub, Konto, Tag), damit der Dialog nicht zu einer langen Liste wird.
@@ -230,7 +261,7 @@ Die Monatsübersicht zeigt **immer alle Tage** des gewählten Monats:
 **Urlaub / Krankheit:** Schaltfläche in der Monatsübersicht, Menü **Datei → Urlaub / Krankheit…** oder Kontextmenü auf einem Tag (ganzer/halber Tag, bzw. **Zeitraum…** für mehrere Tage). Beim Setzen zählen nur Arbeitstage ohne Feiertag.
 
 **Einfärbung:** Wochenenden, Feiertage und Schulferientage erhalten jeweils eine Hintergrundfarbe.  
-Feiertags- und Feriennamen werden in der Hinweis-Spalte angezeigt.
+Feiertags- und Feriennamen sowie **Termintitel** des Tages werden in der Hinweis-Spalte angezeigt.
 
 Der angezeigte Monat folgt der Auswahl in der Jahresübersicht.
 
@@ -255,6 +286,7 @@ Die Hochrechnung nimmt an, dass an allen konfigurierten Arbeitstagen so weiterge
 - Waagerechtes Diagramm: **Beschriftung in 15-Minuten-Schritten**, Darstellung der Pakete **minutengenau**.
 - Vertikale Linien bei 6 h / 10 h / 12 h ab Arbeitsbeginn.
 - In den Arbeitspaketen stehen die Titel; **Doppelklick** öffnet die Bearbeitung.
+- **Termine** erscheinen als eigene Markierung auf der Zeitachse (analog zu den gelben Pausenfenstern), optisch klar von Paketen und Pausen getrennt; der Titel steht an der Markierung. Anzeige auch an freien Tagen und Feiertagen, sofern Datum bzw. Wochentag passt.
 
 ## Jahresübersicht
 
@@ -306,6 +338,7 @@ Eine manuelle Änderung an einem Tag des **aktuellen Monats** berechnet diesen M
 - **Standard-Datenordner:** `%APPDATA%/Journal` (ein Benutzer, ein Konto). Beim ersten Start wird der frühere Ordner `%APPDATA%/Journal/Journal` dorthin verschoben, sofern kein anderer Ordner gewählt ist.
 - **Eine Datei pro Monat** unter `{Datenordner}/monate/{Jahr}-{Monat}.json`.
 - **Eine Datei pro Jahr** unter `{Datenordner}/jahre/{Jahr}.json` (Monatssummen, Jahressumme, Fortschreibung).
+- **Termine** unter `{Datenordner}/termine.json` (einmalige und wöchentliche Termine; keine Zeitrechnung).
 - Speicherort: **vom Benutzer wählbar**.
 - Ein Benutzer / eine Installation – **kein Login**.
 - **Export** (z. B. CSV/PDF): optional, gewünscht für eine spätere Ausbaustufe oder als optionale Funktion.

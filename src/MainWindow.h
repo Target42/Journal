@@ -19,6 +19,7 @@ private slots:
     void chooseDataPath();
     void openSettings();
     void openTitles();
+    void openTermine();
     void openRetirementCalculator();
     void openArbzg();
     void downloadPublicHolidays();

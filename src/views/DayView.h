@@ -13,6 +13,7 @@
 class QCheckBox;
 class QLabel;
 class QToolButton;
+struct Appointment;
 
 class DayView : public QWidget
 {
@@ -54,6 +55,9 @@ private:
     QString packageIdAt(const QPoint &pos) const;
     QRect pauseRect(const PauseInterval &pause) const;
     PauseInterval pauseAt(const QPoint &pos) const;
+    QRect appointmentRect(const Appointment &appointment) const;
+    QString appointmentIdAt(const QPoint &pos) const;
+    void addAppointmentAt(int startMinute);
     void addPackageAt(int startMinute, int endMinute, bool active);
     void editPackage(const QString &id);
     void deletePackage(const QString &id);

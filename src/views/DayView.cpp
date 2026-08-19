@@ -2,6 +2,7 @@
 
 #include "core/Absence.h"
 #include "core/AppSettings.h"
+#include "core/AppointmentCatalog.h"
 #include "core/ArbzgRules.h"
 #include "core/JournalStore.h"
 #include "core/TimeTotals.h"
@@ -9,6 +10,7 @@
 #include "core/WorkPackage.h"
 #include "dialogs/DayBoundsDialog.h"
 #include "dialogs/PauseDialog.h"
+#include "dialogs/TermineDialog.h"
 #include "dialogs/WorkPackageDialog.h"
 
 #include <QAbstractButton>
@@ -96,6 +98,8 @@ DayView::DayView(QWidget *parent)
                 }
             });
     connect(&TitleCatalog::instance(), &TitleCatalog::changed, this, [this]() { update(); });
+    connect(&AppointmentCatalog::instance(), &AppointmentCatalog::changed, this,
+            [this]() { update(); });
 }
 
 void DayView::setupUi()
@@ -468,6 +472,37 @@ PauseInterval DayView::pauseAt(const QPoint &pos) const
     return {};
 }
 
+QRect DayView::appointmentRect(const Appointment &appointment) const
+{
+    const int startBound = windowStart();
+    const int endBound = windowEnd();
+    if (appointment.endMinute <= startBound || appointment.startMinute >= endBound) {
+        return {};
+    }
+    const int start = qBound(startBound, appointment.startMinute, endBound);
+    const int end = qBound(startBound, appointment.endMinute, endBound);
+    const QRect chart = chartRect();
+    const int x1 = xAtMinute(start);
+    const int x2 = qMax(x1 + 4, xAtMinute(end));
+    return QRect(x1, chart.top() + 2, x2 - x1, 16);
+}
+
+QString DayView::appointmentIdAt(const QPoint &pos) const
+{
+    const auto items = AppointmentCatalog::instance().forDate(m_date);
+    for (int i = items.size() - 1; i >= 0; --i) {
+        if (appointmentRect(items[i]).contains(pos)) {
+            return items[i].id;
+        }
+    }
+    return {};
+}
+
+void DayView::addAppointmentAt(int startMinute)
+{
+    TerminEditDialog::runNewOnce(m_date, startMinute, this);
+}
+
 void DayView::openPauseAt(int minute)
 {
     PauseDialog::runAt(m_date, minute, this);
@@ -749,6 +784,29 @@ void DayView::paintEvent(QPaintEvent *event)
         });
     }
 
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    const QColor aptFill(186, 214, 248);
+    const QColor aptEdge(50, 95, 165);
+    const QColor aptText(20, 50, 110);
+    for (const auto &apt : AppointmentCatalog::instance().forDate(m_date)) {
+        if (apt.endMinute <= startBound || apt.startMinute >= endBound) {
+            continue;
+        }
+        const QRect rect = appointmentRect(apt).intersected(chart);
+        if (rect.width() < 2) {
+            continue;
+        }
+        painter.setPen(QPen(aptEdge, 1));
+        painter.setBrush(aptFill);
+        painter.drawRoundedRect(rect, 3, 3);
+        if (rect.width() > 24) {
+            painter.setPen(aptText);
+            painter.drawText(rect.adjusted(4, 0, -4, 0), Qt::AlignVCenter | Qt::AlignLeft,
+                             painter.fontMetrics().elidedText(apt.title, Qt::ElideRight,
+                                                              rect.width() - 8));
+        }
+    }
+
     if (m_dragging) {
         const int start = qMin(m_dragStartMinute, m_dragCurrentMinute);
         const int end = qMax(m_dragStartMinute, m_dragCurrentMinute);
@@ -826,6 +884,11 @@ void DayView::mouseDoubleClickEvent(QMouseEvent *event)
         PauseDialog::runRange(m_date, pause.startMinute, pause.endMinute, true, this);
         return;
     }
+    const QString appointmentId = appointmentIdAt(pos);
+    if (!appointmentId.isEmpty()) {
+        TerminEditDialog::runEdit(AppointmentCatalog::instance().byId(appointmentId), this);
+        return;
+    }
     const int start = minuteAtX(pos.x());
     addPackageAt(start, start + 30, false);
 }
@@ -842,12 +905,21 @@ void DayView::contextMenuEvent(QContextMenuEvent *event)
     auto *addAction = menu.addAction(QStringLiteral("Arbeitspaket hinzufügen…"));
     auto *pauseAction = menu.addAction(pause.isValid() ? QStringLiteral("Pause bearbeiten…")
                                                        : QStringLiteral("Pause einfügen…"));
+    auto *addAppointmentAction = menu.addAction(QStringLiteral("Termin hinzufügen…"));
     auto *boundsAction = menu.addAction(QStringLiteral("Tagesgrenzen…"));
     QAction *editAction = nullptr;
     QAction *deleteAction = nullptr;
     if (!id.isEmpty()) {
         editAction = menu.addAction(QStringLiteral("Bearbeiten…"));
         deleteAction = menu.addAction(QStringLiteral("Löschen"));
+    }
+    QAction *editAppointmentAction = nullptr;
+    if (id.isEmpty()) {
+        const QString appointmentId = inChart ? appointmentIdAt(pos) : QString();
+        if (!appointmentId.isEmpty()) {
+            editAppointmentAction = menu.addAction(QStringLiteral("Termin bearbeiten…"));
+            editAppointmentAction->setData(appointmentId);
+        }
     }
 
     QAction *chosen = menu.exec(event->globalPos());
@@ -859,11 +931,16 @@ void DayView::contextMenuEvent(QContextMenuEvent *event)
         } else {
             openPauseAt(minute);
         }
+    } else if (chosen == addAppointmentAction) {
+        addAppointmentAt(minute);
     } else if (chosen == boundsAction) {
         openBoundsDialog();
     } else if (chosen == editAction) {
         editPackage(id);
     } else if (chosen == deleteAction) {
         deletePackage(id);
+    } else if (chosen == editAppointmentAction) {
+        const QString appointmentId = editAppointmentAction->data().toString();
+        TerminEditDialog::runEdit(AppointmentCatalog::instance().byId(appointmentId), this);
     }
 }

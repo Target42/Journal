@@ -4,7 +4,8 @@ interface
 
 uses
   Winapi.Windows, System.SysUtils, System.Classes, Vcl.Graphics, Vcl.Controls,
-  Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Menus, Journal.Types;
+  Vcl.Forms, Vcl.StdCtrls, Vcl.ExtCtrls, Vcl.Menus, Journal.Types,
+  Journal.Appointments;
 
 type
   TDateNotify = procedure(const ADate: TDate) of object;
@@ -32,10 +33,12 @@ type
     FContextMinute: Integer;
     FContextPackageId: string;
     FContextPause: TPauseInterval;
+    FContextAppointmentId: string;
     procedure StoreChanged;
     procedure SettingsChanged;
     procedure DayRecalculated(const ADate: TDate);
     procedure TitlesChanged;
+    procedure AppointmentsChanged;
     procedure RefreshHeader;
     function ChartRect: TRect;
     function BarsRect: TRect;
@@ -45,6 +48,9 @@ type
     function PackageIdAt(const Pos: TPoint): string;
     function PauseRect(const Pause: TPauseInterval): TRect;
     function PauseAt(const Pos: TPoint): TPauseInterval;
+    function AppointmentRect(const Apt: TAppointment): TRect;
+    function AppointmentIdAt(const Pos: TPoint): string;
+    procedure AddAppointmentAt(StartMinute: Integer);
     procedure AddPackageAt(StartMinute, EndMinute: Integer; Active: Boolean);
     procedure EditPackage(const Id: string);
     procedure DeletePackage(const Id: string);
@@ -69,6 +75,8 @@ type
     procedure CtxBounds(Sender: TObject);
     procedure CtxEdit(Sender: TObject);
     procedure CtxDelete(Sender: TObject);
+    procedure CtxAddAppointment(Sender: TObject);
+    procedure CtxEditAppointment(Sender: TObject);
   public
     constructor Create(AOwner: TComponent); override;
     destructor Destroy; override;
@@ -84,7 +92,8 @@ implementation
 uses
   System.Math, System.DateUtils, System.Types, System.UITypes, Vcl.Dialogs,
   Journal.Store, Journal.Settings, Journal.TimeTotals, Journal.TitleCatalog,
-  Journal.Arbzg, Journal.UiUtil, WorkPackageForm, DayBoundsForm, PauseForm;
+  Journal.Arbzg, Journal.UiUtil, WorkPackageForm,
+  DayBoundsForm, PauseForm, TerminEditForm;
 
 const
   HeaderBottom = 0;
@@ -124,6 +133,7 @@ begin
   TAppSettings.Instance.OnChanged.Add(SettingsChanged);
   TTimeTotals.Instance.OnDayRecalculated.Add(DayRecalculated);
   TTitleCatalog.Instance.OnChanged.Add(TitlesChanged);
+  TAppointmentCatalog.Instance.OnChanged.Add(AppointmentsChanged);
   RefreshHeader;
 end;
 
@@ -133,6 +143,7 @@ begin
   TAppSettings.Instance.OnChanged.Remove(SettingsChanged);
   TTimeTotals.Instance.OnDayRecalculated.Remove(DayRecalculated);
   TTitleCatalog.Instance.OnChanged.Remove(TitlesChanged);
+  TAppointmentCatalog.Instance.OnChanged.Remove(AppointmentsChanged);
   inherited Destroy;
 end;
 
@@ -163,6 +174,11 @@ begin
 end;
 
 procedure TDayViewFrame.TitlesChanged;
+begin
+  pbChart.Invalidate;
+end;
+
+procedure TDayViewFrame.AppointmentsChanged;
 begin
   pbChart.Invalidate;
 end;
@@ -403,6 +419,38 @@ begin
       Exit(Pause);
 end;
 
+function TDayViewFrame.AppointmentRect(const Apt: TAppointment): TRect;
+var
+  Chart: TRect;
+  StartBound, EndBound, X1, X2: Integer;
+begin
+  Chart := ChartRect;
+  StartBound := WindowStart;
+  EndBound := WindowEnd;
+  if (Apt.EndMinute <= StartBound) or (Apt.StartMinute >= EndBound) then
+    Exit(Rect(0, 0, 0, 0));
+  X1 := XAtMinute(ClampInt(Apt.StartMinute, StartBound, EndBound));
+  X2 := XAtMinute(ClampInt(Apt.EndMinute, StartBound, EndBound));
+  Result := Rect(X1, Chart.Top + 2, Max(X1 + 4, X2), Chart.Top + 18);
+end;
+
+function TDayViewFrame.AppointmentIdAt(const Pos: TPoint): string;
+var
+  Items: TArray<TAppointment>;
+  I: Integer;
+begin
+  Result := '';
+  Items := TAppointmentCatalog.Instance.ForDate(FDate);
+  for I := High(Items) downto 0 do
+    if PtInRect(AppointmentRect(Items[I]), Pos) then
+      Exit(Items[I].Id);
+end;
+
+procedure TDayViewFrame.AddAppointmentAt(StartMinute: Integer);
+begin
+  TTerminEditForm.RunNewOnce(Self, FDate, StartMinute);
+end;
+
 procedure TDayViewFrame.OpenPauseAt(Minute: Integer);
 begin
   TPauseForm.RunAt(Self, FDate, Minute);
@@ -549,6 +597,7 @@ var
   PauseWindowBand, Hit, Band: TRect;
   ShowPauseWindow: Boolean;
   Pause: TPauseInterval;
+  Apt: TAppointment;
 
   procedure DrawTickAt(AMinute: Integer);
   var
@@ -740,6 +789,25 @@ begin
     end;
     C.Brush.Style := bsSolid;
   end;
+  for Apt in TAppointmentCatalog.Instance.ForDate(FDate) do
+  begin
+    if (Apt.EndMinute <= StartBound) or (Apt.StartMinute >= EndBound) then
+      Continue;
+    Hit := TRect.Intersect(AppointmentRect(Apt), Chart);
+    if Hit.Width < 2 then
+      Continue;
+    C.Brush.Color := RGB(186, 214, 248);
+    C.Pen.Color := RGB(50, 95, 165);
+    C.RoundRect(Hit.Left, Hit.Top, Hit.Right, Hit.Bottom, 6, 6);
+    if Hit.Width > 24 then
+    begin
+      C.Font.Color := RGB(20, 50, 110);
+      C.Brush.Style := bsClear;
+      C.TextOut(Hit.Left + 4, Hit.Top + Max(0, (Hit.Height - C.TextHeight(Apt.Title)) div 2),
+        ElideText(C, Apt.Title, Hit.Width - 8));
+      C.Brush.Style := bsSolid;
+    end;
+  end;
   if FDragging then
   begin
     StartM := Min(FDragStartMinute, FDragCurrentMinute);
@@ -822,6 +890,12 @@ begin
     TPauseForm.RunRange(Self, FDate, Pause.StartMinute, Pause.EndMinute, True);
     Exit;
   end;
+  FContextAppointmentId := AppointmentIdAt(P);
+  if FContextAppointmentId <> '' then
+  begin
+    TTerminEditForm.RunEdit(Self, TAppointmentCatalog.Instance.ById(FContextAppointmentId));
+    Exit;
+  end;
   StartM := MinuteAtX(P.X);
   AddPackageAt(StartM, StartM + 30, False);
 end;
@@ -841,12 +915,17 @@ begin
       FContextPause := PauseAt(MousePos)
     else
       FContextPause := Default(TPauseInterval);
+    if FContextPackageId = '' then
+      FContextAppointmentId := AppointmentIdAt(MousePos)
+    else
+      FContextAppointmentId := '';
   end
   else
   begin
     FContextPackageId := '';
     FContextMinute := 8 * 60;
     FContextPause := Default(TPauseInterval);
+    FContextAppointmentId := '';
   end;
   Menu := TPopupMenu.Create(Self);
   try
@@ -862,6 +941,10 @@ begin
     Item.OnClick := CtxPause;
     Menu.Items.Add(Item);
     Item := TMenuItem.Create(Menu);
+    Item.Caption := 'Termin hinzuf' + #$00FC + 'gen' + Ellipsis;
+    Item.OnClick := CtxAddAppointment;
+    Menu.Items.Add(Item);
+    Item := TMenuItem.Create(Menu);
     Item.Caption := 'Tagesgrenzen' + Ellipsis;
     Item.OnClick := CtxBounds;
     Menu.Items.Add(Item);
@@ -872,8 +955,15 @@ begin
       Item.OnClick := CtxEdit;
       Menu.Items.Add(Item);
       Item := TMenuItem.Create(Menu);
-      Item.Caption := 'Löschen';
+      Item.Caption := 'L' + #$00F6 + 'schen';
       Item.OnClick := CtxDelete;
+      Menu.Items.Add(Item);
+    end
+    else if FContextAppointmentId <> '' then
+    begin
+      Item := TMenuItem.Create(Menu);
+      Item.Caption := 'Termin bearbeiten' + Ellipsis;
+      Item.OnClick := CtxEditAppointment;
       Menu.Items.Add(Item);
     end;
     Menu.Popup(pbChart.ClientToScreen(MousePos).X, pbChart.ClientToScreen(MousePos).Y);
@@ -908,6 +998,17 @@ end;
 procedure TDayViewFrame.CtxDelete(Sender: TObject);
 begin
   DeletePackage(FContextPackageId);
+end;
+
+procedure TDayViewFrame.CtxAddAppointment(Sender: TObject);
+begin
+  AddAppointmentAt(FContextMinute);
+end;
+
+procedure TDayViewFrame.CtxEditAppointment(Sender: TObject);
+begin
+  if FContextAppointmentId <> '' then
+    TTerminEditForm.RunEdit(Self, TAppointmentCatalog.Instance.ById(FContextAppointmentId));
 end;
 
 end.

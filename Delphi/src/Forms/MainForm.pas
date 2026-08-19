@@ -14,6 +14,7 @@ type
     miDatenordner: TMenuItem;
     miEinstellungen: TMenuItem;
     miTitel: TMenuItem;
+    miTermine: TMenuItem;
     miAbsence: TMenuItem;
     N1: TMenuItem;
     miRente: TMenuItem;
@@ -53,6 +54,7 @@ type
     procedure ChooseDataPath(Sender: TObject);
     procedure OpenSettings(Sender: TObject);
     procedure OpenTitles(Sender: TObject);
+    procedure OpenTermine(Sender: TObject);
     procedure OpenAbsence(Sender: TObject);
     procedure OpenRetirement(Sender: TObject);
     procedure OpenArbzg(Sender: TObject);
@@ -83,7 +85,7 @@ implementation
 
 uses
   System.DateUtils, System.Math, Vcl.FileCtrl, Journal.Types, Journal.Settings, Journal.Calendar, Journal.TimeTotals,
-  Journal.Store, Journal.Arbzg, SettingsForm, TitlesForm, RetirementForm, ArbzgForm, YearSelectForm;
+  Journal.Store, Journal.Arbzg, SettingsForm, TitlesForm, TermineForm, RetirementForm, ArbzgForm, YearSelectForm;
 
 procedure TMainForm.FormCreate(Sender: TObject);
 begin
@@ -108,6 +110,7 @@ begin
   miDatenordner.OnClick := ChooseDataPath;
   miEinstellungen.OnClick := OpenSettings;
   miTitel.OnClick := OpenTitles;
+  miTermine.OnClick := OpenTermine;
   miAbsence.OnClick := OpenAbsence;
   miRente.OnClick := OpenRetirement;
   miArbZG.OnClick := OpenArbzg;
@@ -267,6 +270,18 @@ var
   Dlg: TTitlesForm;
 begin
   Dlg := TTitlesForm.Create(Self);
+  try
+    Dlg.ShowModal;
+  finally
+    Dlg.Free;
+  end;
+end;
+
+procedure TMainForm.OpenTermine(Sender: TObject);
+var
+  Dlg: TTermineForm;
+begin
+  Dlg := TTermineForm.Create(Self);
   try
     Dlg.ShowModal;
   finally

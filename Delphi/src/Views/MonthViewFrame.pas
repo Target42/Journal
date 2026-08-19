@@ -24,6 +24,7 @@ type
     procedure DataReloaded;
     procedure DayRecalculated(const ADate: TDate);
     procedure MonthRecalculated(AYear, AMonth: Integer);
+    procedure AppointmentsChanged;
     procedure FillDayRow(Day: Integer);
     procedure UpdateSummary;
     procedure RefreshView;
@@ -64,8 +65,8 @@ implementation
 
 uses
   System.DateUtils, System.Types, Vcl.Dialogs, Journal.Settings, Journal.Calendar,
-  Journal.Store, Journal.TimeTotals, Journal.Arbzg, Journal.UiUtil, AbsenceForm,
-  DayBoundsForm, DayPackagesForm;
+  Journal.Store, Journal.TimeTotals, Journal.Arbzg, Journal.UiUtil, Journal.Appointments,
+  AbsenceForm, DayBoundsForm, DayPackagesForm;
 
 const
   ColDay = 0;
@@ -158,6 +159,7 @@ begin
   TJournalStore.Instance.OnDataReloaded.Add(DataReloaded);
   TTimeTotals.Instance.OnDayRecalculated.Add(DayRecalculated);
   TTimeTotals.Instance.OnMonthRecalculated.Add(MonthRecalculated);
+  TAppointmentCatalog.Instance.OnChanged.Add(AppointmentsChanged);
   TCalendarService.Instance.EnsureYearLoaded(YearOf(FMonth));
   RefreshView;
 end;
@@ -169,6 +171,7 @@ begin
   TJournalStore.Instance.OnDataReloaded.Remove(DataReloaded);
   TTimeTotals.Instance.OnDayRecalculated.Remove(DayRecalculated);
   TTimeTotals.Instance.OnMonthRecalculated.Remove(MonthRecalculated);
+  TAppointmentCatalog.Instance.OnChanged.Remove(AppointmentsChanged);
   inherited Destroy;
 end;
 
@@ -189,6 +192,11 @@ begin
 end;
 
 procedure TMonthViewFrame.DataReloaded;
+begin
+  RefreshView;
+end;
+
+procedure TMonthViewFrame.AppointmentsChanged;
 begin
   RefreshView;
 end;
@@ -273,7 +281,7 @@ var
   Days: Integer;
   ADate: TDate;
   Row: Integer;
-  Hints, Eve: string;
+  Hints, Eve, Title: string;
   Target, Actual, Saldo: Double;
   Absence: TAbsence;
   Arbzg: TArbzgDay;
@@ -310,6 +318,14 @@ begin
     if Hints <> '' then
       Hints := Hints + ' ' + MiddleDot + ' ';
     Hints := Hints + Absence.LabelText;
+  end;
+  for Title in TAppointmentCatalog.Instance.TitlesForDate(ADate) do
+  begin
+    if Title = '' then
+      Continue;
+    if Hints <> '' then
+      Hints := Hints + ' ' + MiddleDot + ' ';
+    Hints := Hints + Title;
   end;
   if ADate <= Date then
   begin

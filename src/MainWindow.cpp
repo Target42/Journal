@@ -8,6 +8,7 @@
 #include "dialogs/ArbzgDialog.h"
 #include "dialogs/RetirementDialog.h"
 #include "dialogs/SettingsDialog.h"
+#include "dialogs/TermineDialog.h"
 #include "dialogs/TitlesDialog.h"
 #include "views/AccountTrendView.h"
 #include "views/DayView.h"
@@ -195,6 +196,9 @@ void MainWindow::setupMenus()
     auto *titlesAction = fileMenu->addAction(QStringLiteral("Titel…"));
     connect(titlesAction, &QAction::triggered, this, &MainWindow::openTitles);
 
+    auto *termineAction = fileMenu->addAction(QStringLiteral("Termine…"));
+    connect(termineAction, &QAction::triggered, this, &MainWindow::openTermine);
+
     auto *absenceAction = fileMenu->addAction(QStringLiteral("Urlaub / Krankheit…"));
     connect(absenceAction, &QAction::triggered, m_monthView, &MonthView::openAbsenceDialog);
 
@@ -328,6 +332,12 @@ void MainWindow::openSettings()
 void MainWindow::openTitles()
 {
     TitlesDialog dialog(this);
+    dialog.exec();
+}
+
+void MainWindow::openTermine()
+{
+    TermineDialog dialog(this);
     dialog.exec();
 }
 

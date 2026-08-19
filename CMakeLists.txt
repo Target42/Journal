@@ -34,6 +34,8 @@ qt_add_executable(Journal
     src/core/WorkPackage.h
     src/core/TitleCatalog.h
     src/core/TitleCatalog.cpp
+    src/core/AppointmentCatalog.h
+    src/core/AppointmentCatalog.cpp
     src/core/JournalStore.h
     src/core/JournalStore.cpp
     src/core/TimeTotals.h
@@ -58,6 +60,8 @@ qt_add_executable(Journal
     src/dialogs/ArbzgDialog.cpp
     src/dialogs/TitlesDialog.h
     src/dialogs/TitlesDialog.cpp
+    src/dialogs/TermineDialog.h
+    src/dialogs/TermineDialog.cpp
     src/dialogs/WorkPackageDialog.h
     src/dialogs/WorkPackageDialog.cpp
     src/dialogs/PauseDialog.h

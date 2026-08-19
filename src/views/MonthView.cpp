@@ -2,6 +2,7 @@
 
 #include "core/Absence.h"
 #include "core/AppSettings.h"
+#include "core/AppointmentCatalog.h"
 #include "core/ArbzgRules.h"
 #include "core/CalendarService.h"
 #include "core/JournalStore.h"
@@ -152,6 +153,9 @@ MonthView::MonthView(QWidget *parent)
             this, &MonthView::refresh);
 
     connect(&JournalStore::instance(), &JournalStore::dataReloaded,
+            this, &MonthView::refresh);
+
+    connect(&AppointmentCatalog::instance(), &AppointmentCatalog::changed,
             this, &MonthView::refresh);
 
     auto &totals = TimeTotals::instance();
@@ -386,6 +390,10 @@ void MonthView::fillDayRow(int day)
     const Absence absence = TimeTotals::instance().effectiveAbsenceForDate(date);
     if (absence.isSet()) {
         hints << absence.label();
+    }
+    const auto appointmentTitles = AppointmentCatalog::instance().titlesForDate(date);
+    for (const auto &title : appointmentTitles) {
+        hints << title;
     }
     ArbzgDay arbzg;
     if (date <= today) {
