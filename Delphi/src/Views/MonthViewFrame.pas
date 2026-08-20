@@ -45,6 +45,10 @@ type
     procedure CtxVacHalf(Sender: TObject);
     procedure CtxSickFull(Sender: TObject);
     procedure CtxSickHalf(Sender: TObject);
+    procedure CtxPaidFull(Sender: TObject);
+    procedure CtxPaidHalf(Sender: TObject);
+    procedure CtxCompFull(Sender: TObject);
+    procedure CtxCompHalf(Sender: TObject);
     procedure CtxBounds(Sender: TObject);
     procedure CtxRange(Sender: TObject);
     procedure CtxClear(Sender: TObject);
@@ -428,6 +432,10 @@ begin
     Result := RGB(210, 232, 255)
   else if Absence.AbsenceType = atSick then
     Result := RGB(255, 228, 196)
+  else if Absence.AbsenceType = atPaidLeave then
+    Result := RGB(232, 214, 245)
+  else if Absence.AbsenceType = atCompensatory then
+    Result := RGB(210, 240, 220)
   else
     Result := clWindow;
 end;
@@ -524,7 +532,7 @@ procedure TMonthViewFrame.RebuildDayMenu;
 var
   Current: TAbsence;
   Countable: Boolean;
-  Vac, Sick, Item: TMenuItem;
+  Vac, Sick, Paid, Comp, Item: TMenuItem;
 
   function Add(const Caption: string; Handler: TNotifyEvent; Parent: TMenuItem = nil): TMenuItem;
   begin
@@ -556,6 +564,20 @@ begin
   Item.Enabled := Countable;
   Item := Add('Halber Tag', CtxSickHalf, Sick);
   Item.Checked := (Current.AbsenceType = atSick) and Current.IsHalfDay;
+  Item.Enabled := Countable;
+  Paid := Add('Bezahlt frei', nil);
+  Item := Add('Ganzer Tag', CtxPaidFull, Paid);
+  Item.Checked := (Current.AbsenceType = atPaidLeave) and not Current.IsHalfDay;
+  Item.Enabled := Countable;
+  Item := Add('Halber Tag', CtxPaidHalf, Paid);
+  Item.Checked := (Current.AbsenceType = atPaidLeave) and Current.IsHalfDay;
+  Item.Enabled := Countable;
+  Comp := Add('Zeitausgleich', nil);
+  Item := Add('Ganzer Tag', CtxCompFull, Comp);
+  Item.Checked := (Current.AbsenceType = atCompensatory) and not Current.IsHalfDay;
+  Item.Enabled := Countable;
+  Item := Add('Halber Tag', CtxCompHalf, Comp);
+  Item.Checked := (Current.AbsenceType = atCompensatory) and Current.IsHalfDay;
   Item.Enabled := Countable;
   Add('-', nil);
   Add('Tagesgrenzen' + Ellipsis, CtxBounds);
@@ -606,6 +628,42 @@ var
   A: TAbsence;
 begin
   A.AbsenceType := atSick;
+  A.Fraction := 0.5;
+  ApplyAbsence([FContextDate], A);
+end;
+
+procedure TMonthViewFrame.CtxPaidFull(Sender: TObject);
+var
+  A: TAbsence;
+begin
+  A.AbsenceType := atPaidLeave;
+  A.Fraction := 1;
+  ApplyAbsence([FContextDate], A);
+end;
+
+procedure TMonthViewFrame.CtxPaidHalf(Sender: TObject);
+var
+  A: TAbsence;
+begin
+  A.AbsenceType := atPaidLeave;
+  A.Fraction := 0.5;
+  ApplyAbsence([FContextDate], A);
+end;
+
+procedure TMonthViewFrame.CtxCompFull(Sender: TObject);
+var
+  A: TAbsence;
+begin
+  A.AbsenceType := atCompensatory;
+  A.Fraction := 1;
+  ApplyAbsence([FContextDate], A);
+end;
+
+procedure TMonthViewFrame.CtxCompHalf(Sender: TObject);
+var
+  A: TAbsence;
+begin
+  A.AbsenceType := atCompensatory;
   A.Fraction := 0.5;
   ApplyAbsence([FContextDate], A);
 end;

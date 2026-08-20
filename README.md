@@ -31,13 +31,17 @@ Erfasst wird die tatsächliche Arbeitszeit vollständig. Auf Soll, Ist und Saldo
 
 ## Daten
 
-Standardordner unter Windows: `%APPDATA%\Journal`. Der Speicherort ist über **Datei → Datenordner wählen…** frei wählbar.
+Standardordner unter Windows: `%APPDATA%\Journal`. Unter Linux: `~/.local/share/Journal`. Der Speicherort ist über **Datei → Datenordner wählen…** frei wählbar.
+
+Einstellungen (Soll, Pausen, Überstundenkonto, Bundesland, …) liegen in `{Datenordner}/einstellungen.json` und wandern mit dem Datenordner mit. Nur der gewählte Datenpfad bleibt maschinenbezogen (Windows: Registry, Linux: `~/.config/Journal/Journal.conf`).
 
 | Inhalt | Pfad |
 |--------|------|
+| Einstellungen | `{Datenordner}/einstellungen.json` |
 | Monat (Pakete, Pausen, Abwesenheiten) | `{Datenordner}/monate/{Jahr}-{Monat}.json` |
 | Jahressummen und Fortschreibung | `{Datenordner}/jahre/{Jahr}.json` |
 | Feiertage / Schulferien | `{Datenordner}/kalender/` |
+| Titel / Termine | `{Datenordner}/titel.json`, `{Datenordner}/termine.json` |
 
 ## Repository
 

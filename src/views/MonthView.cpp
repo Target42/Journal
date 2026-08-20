@@ -78,6 +78,16 @@ QColor sickColor()
     return QColor(255, 228, 196);
 }
 
+QColor paidLeaveColor()
+{
+    return QColor(232, 214, 245);
+}
+
+QColor compensatoryColor()
+{
+    return QColor(210, 240, 220);
+}
+
 QString formatHours(double hours)
 {
     return QLocale().toString(hours, 'f', 2);
@@ -196,7 +206,7 @@ void MonthView::setupUi()
     m_summaryLabel = new QLabel(this);
     m_summaryLabel->setWordWrap(true);
     headerRow->addWidget(m_summaryLabel, 1);
-    m_absenceButton = new QPushButton(QStringLiteral("Urlaub / Krankheit…"), this);
+    m_absenceButton = new QPushButton(QStringLiteral("Abwesenheit…"), this);
     m_absenceButton->setAutoDefault(false);
     m_absenceButton->setDefault(false);
     headerRow->addWidget(m_absenceButton, 0, Qt::AlignTop);
@@ -518,6 +528,10 @@ void MonthView::applyRowColors(int row, const QDate &date, const QString & /*hin
         background = vacationColor();
     } else if (absence.type == AbsenceType::Sick) {
         background = sickColor();
+    } else if (absence.type == AbsenceType::PaidLeave) {
+        background = paidLeaveColor();
+    } else if (absence.type == AbsenceType::Compensatory) {
+        background = compensatoryColor();
     }
 
     for (int col = 0; col < m_dayTable->columnCount(); ++col) {
@@ -584,6 +598,30 @@ void MonthView::popupDayMenu(const QPoint &viewportPos)
         sickHalf->setChecked(current.isHalfDay());
     }
 
+    auto *paidMenu = menu.addMenu(QStringLiteral("Bezahlt frei"));
+    auto *paidFull = paidMenu->addAction(QStringLiteral("Ganzer Tag"));
+    auto *paidHalf = paidMenu->addAction(QStringLiteral("Halber Tag"));
+    paidFull->setCheckable(true);
+    paidHalf->setCheckable(true);
+    paidFull->setEnabled(countable);
+    paidHalf->setEnabled(countable);
+    if (current.type == AbsenceType::PaidLeave) {
+        paidFull->setChecked(!current.isHalfDay());
+        paidHalf->setChecked(current.isHalfDay());
+    }
+
+    auto *compMenu = menu.addMenu(QStringLiteral("Zeitausgleich"));
+    auto *compFull = compMenu->addAction(QStringLiteral("Ganzer Tag"));
+    auto *compHalf = compMenu->addAction(QStringLiteral("Halber Tag"));
+    compFull->setCheckable(true);
+    compHalf->setCheckable(true);
+    compFull->setEnabled(countable);
+    compHalf->setEnabled(countable);
+    if (current.type == AbsenceType::Compensatory) {
+        compFull->setChecked(!current.isHalfDay());
+        compHalf->setChecked(current.isHalfDay());
+    }
+
     menu.addSeparator();
     auto *boundsAction = menu.addAction(QStringLiteral("Tagesgrenzen…"));
     auto *rangeAction = menu.addAction(QStringLiteral("Zeitraum…"));
@@ -605,6 +643,14 @@ void MonthView::popupDayMenu(const QPoint &viewportPos)
         applyAbsence({date}, Absence{AbsenceType::Sick, 1.0});
     } else if (chosen == sickHalf) {
         applyAbsence({date}, Absence{AbsenceType::Sick, 0.5});
+    } else if (chosen == paidFull) {
+        applyAbsence({date}, Absence{AbsenceType::PaidLeave, 1.0});
+    } else if (chosen == paidHalf) {
+        applyAbsence({date}, Absence{AbsenceType::PaidLeave, 0.5});
+    } else if (chosen == compFull) {
+        applyAbsence({date}, Absence{AbsenceType::Compensatory, 1.0});
+    } else if (chosen == compHalf) {
+        applyAbsence({date}, Absence{AbsenceType::Compensatory, 0.5});
     } else if (chosen == rangeAction) {
         openRangeDialog(date);
     } else if (chosen == boundsAction) {
@@ -650,7 +696,7 @@ void MonthView::applyAbsence(const QVector<QDate> &dates, const Absence &absence
     if (dates.isEmpty()) {
         QMessageBox::information(
             this,
-            QStringLiteral("Urlaub / Krankheit"),
+            QStringLiteral("Abwesenheit"),
             QStringLiteral("Im gewählten Zeitraum liegt kein Arbeitstag ohne Feiertag."));
         return;
     }
@@ -659,7 +705,7 @@ void MonthView::applyAbsence(const QVector<QDate> &dates, const Absence &absence
     if (!JournalStore::instance().setAbsences(dates, absence, &error)) {
         QMessageBox::warning(
             this,
-            QStringLiteral("Urlaub / Krankheit"),
+            QStringLiteral("Abwesenheit"),
             error.isEmpty() ? QStringLiteral("Der Status konnte nicht gespeichert werden.")
                             : error);
     }

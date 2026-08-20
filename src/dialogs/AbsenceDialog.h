@@ -30,6 +30,8 @@ private:
     QDateEdit *m_toEdit = nullptr;
     QRadioButton *m_vacationRadio = nullptr;
     QRadioButton *m_sickRadio = nullptr;
+    QRadioButton *m_paidRadio = nullptr;
+    QRadioButton *m_compensatoryRadio = nullptr;
     QRadioButton *m_clearRadio = nullptr;
     QRadioButton *m_fullRadio = nullptr;
     QRadioButton *m_halfRadio = nullptr;

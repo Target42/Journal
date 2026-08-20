@@ -68,10 +68,24 @@ double creditedHours(const QDate &date, double target, double workHours, const A
     if (!absence.isSet() || target <= 0.0 || date > QDate::currentDate()) {
         return workHours;
     }
+    if (!absence.fillsToTarget()) {
+        return workHours;
+    }
     if (absence.fraction >= 0.999) {
         return target;
     }
     return workHours + target * absence.fraction;
+}
+
+bool applyOpeningCarry(int year, int month, double &carry)
+{
+    const OvertimeAccountSettings account = AppSettings::instance().overtimeAccount();
+    if (!account.openingEnabled || account.openingYear != year || account.openingMonth != month
+        || month < 1 || month > 12) {
+        return false;
+    }
+    carry = account.openingHours;
+    return true;
 }
 
 Absence effectiveAbsence(const QDate &date)
@@ -404,6 +418,10 @@ YearTotals TimeTotals::assembleYear(int year) const
 
 double TimeTotals::openingCarry(int year, int month)
 {
+    double opening = 0.0;
+    if (applyOpeningCarry(year, month, opening)) {
+        return opening;
+    }
     if (month <= 1) {
         const int prevYear = year - 1;
         if (prevYear < 1970) {
@@ -439,6 +457,7 @@ void TimeTotals::fillYearMonths(int year, bool emitMonthSignals)
     CalendarService::instance().ensureYearLoaded(year);
     double carry = openingCarry(year, 1);
     for (int month = 1; month <= 12; ++month) {
+        applyOpeningCarry(year, month, carry);
         const MonthTotals totals = computeMonth(year, month, carry);
         m_months.insert(monthKey(year, month), totals);
         carry = totals.closingSaldo;
@@ -548,6 +567,7 @@ void TimeTotals::recalculateFrom(int year, int month)
     QList<int> years;
 
     while (y < endYear || (y == endYear && m <= 12)) {
+        applyOpeningCarry(y, m, carry);
         const MonthTotals totals = computeMonth(y, m, carry);
         m_months.insert(monthKey(y, m), totals);
         carry = totals.closingSaldo;

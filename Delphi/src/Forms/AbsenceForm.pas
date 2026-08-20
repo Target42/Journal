@@ -15,6 +15,8 @@ type
     grpArt: TGroupBox;
     rbVacation: TRadioButton;
     rbSick: TRadioButton;
+    rbPaid: TRadioButton;
+    rbCompensatory: TRadioButton;
     rbClear: TRadioButton;
     grpUmfang: TGroupBox;
     rbFull: TRadioButton;
@@ -99,6 +101,10 @@ begin
     Exit;
   if rbSick.Checked then
     Result.AbsenceType := atSick
+  else if rbPaid.Checked then
+    Result.AbsenceType := atPaidLeave
+  else if rbCompensatory.Checked then
+    Result.AbsenceType := atCompensatory
   else
     Result.AbsenceType := atVacation;
   if rbHalf.Checked then

@@ -69,6 +69,17 @@ begin
     Inc(Month);
 end;
 
+function ApplyOpeningCarry(AYear, AMonth: Integer; var Carry: Double): Boolean;
+var
+  Account: TOvertimeAccountSettings;
+begin
+  Account := TAppSettings.Instance.OvertimeAccount;
+  Result := Account.OpeningEnabled and (Account.OpeningYear = AYear)
+    and (Account.OpeningMonth = AMonth) and (AMonth >= 1) and (AMonth <= 12);
+  if Result then
+    Carry := Account.OpeningHours;
+end;
+
 function IsOvertimeLimitMonth(Month: Integer; Period: TOvertimeLimitPeriod): Boolean;
 begin
   if Period = olpMonthly then
@@ -108,6 +119,8 @@ function CreditedHours(const ADate: TDate; Target, WorkHours: Double;
   const Absence: TAbsence): Double;
 begin
   if (not Absence.IsSet) or (Target <= 0) or (ADate > Date) then
+    Exit(WorkHours);
+  if not Absence.FillsToTarget then
     Exit(WorkHours);
   if Absence.Fraction >= 0.999 then
     Result := Target
@@ -490,6 +503,9 @@ var
   Previous: TMonthTotals;
   Carry: Double;
 begin
+  Carry := 0;
+  if ApplyOpeningCarry(AYear, AMonth, Carry) then
+    Exit(Carry);
   if AMonth <= 1 then
   begin
     PrevYear := AYear - 1;
@@ -531,6 +547,7 @@ begin
   Carry := OpeningCarry(AYear, 1);
   for Month := 1 to 12 do
   begin
+    ApplyOpeningCarry(AYear, Month, Carry);
     Totals := ComputeMonth(AYear, Month, Carry);
     FMonths.AddOrSetValue(MonthKey(AYear, Month), Totals);
     Carry := Totals.ClosingSaldo;
@@ -656,6 +673,7 @@ begin
   try
     while (Y < EndYear) or ((Y = EndYear) and (M <= 12)) do
     begin
+      ApplyOpeningCarry(Y, M, Carry);
       Totals := ComputeMonth(Y, M, Carry);
       FMonths.AddOrSetValue(MonthKey(Y, M), Totals);
       Carry := Totals.ClosingSaldo;

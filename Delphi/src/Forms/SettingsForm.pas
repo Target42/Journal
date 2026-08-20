@@ -62,6 +62,14 @@ type
     lblMax: TLabel;
     nbMax: TNumberBox;
     lblOvertimeHint: TLabel;
+    grpOpening: TGroupBox;
+    chkOpening: TCheckBox;
+    lblOpeningFrom: TLabel;
+    cbOpeningMonth: TComboBox;
+    nbOpeningYear: TNumberBox;
+    lblOpeningHours: TLabel;
+    nbOpeningHours: TNumberBox;
+    lblOpeningHint: TLabel;
     grpBounds: TGroupBox;
     lblVon: TLabel;
     dtpStart: TDateTimePicker;
@@ -98,7 +106,7 @@ implementation
 {$R *.dfm}
 
 uses
-  Vcl.Dialogs, Journal.Settings;
+  System.DateUtils, Vcl.Dialogs, Journal.Settings;
 
 procedure TSettingsForm.FormCreate(Sender: TObject);
 var
@@ -117,6 +125,19 @@ begin
   cbPeriod.Items.Clear;
   cbPeriod.Items.Add('Monatlich');
   cbPeriod.Items.Add('Quartalsweise');
+  cbOpeningMonth.Items.Clear;
+  cbOpeningMonth.Items.Add('Januar');
+  cbOpeningMonth.Items.Add('Februar');
+  cbOpeningMonth.Items.Add('M' + #$00E4 + 'rz');
+  cbOpeningMonth.Items.Add('April');
+  cbOpeningMonth.Items.Add('Mai');
+  cbOpeningMonth.Items.Add('Juni');
+  cbOpeningMonth.Items.Add('Juli');
+  cbOpeningMonth.Items.Add('August');
+  cbOpeningMonth.Items.Add('September');
+  cbOpeningMonth.Items.Add('Oktober');
+  cbOpeningMonth.Items.Add('November');
+  cbOpeningMonth.Items.Add('Dezember');
   cbEve.Items.Clear;
   cbEve.Items.Add('Normaler Arbeitstag');
   cbEve.Items.Add('Jeweils ein Urlaubstag');
@@ -128,6 +149,7 @@ begin
   rbIndividual.OnClick := UpdateModeUi;
   nbWeekly.OnChangeValue := UpdateEvenPreview;
   chkOvertimeLimits.OnClick := UpdateOvertimeUi;
+  chkOpening.OnClick := UpdateOvertimeUi;
   btnOk.OnClick := OkClick;
   btnCancel.OnClick := CancelClick;
   LoadFromSettings;
@@ -184,6 +206,16 @@ begin
     cbPeriod.ItemIndex := 1;
   nbMin.Value := Overtime.MinHours;
   nbMax.Value := Overtime.MaxHours;
+  chkOpening.Checked := Overtime.OpeningEnabled;
+  if (Overtime.OpeningMonth >= 1) and (Overtime.OpeningMonth <= 12) then
+    cbOpeningMonth.ItemIndex := Overtime.OpeningMonth - 1
+  else
+    cbOpeningMonth.ItemIndex := 0;
+  if Overtime.OpeningYear >= 1970 then
+    nbOpeningYear.Value := Overtime.OpeningYear
+  else
+    nbOpeningYear.Value := YearOf(Date);
+  nbOpeningHours.Value := Overtime.OpeningHours;
   UpdateOvertimeUi(nil);
 end;
 
@@ -227,6 +259,10 @@ begin
     Overtime.Period := olpQuarterly;
   Overtime.MinHours := nbMin.Value;
   Overtime.MaxHours := nbMax.Value;
+  Overtime.OpeningEnabled := chkOpening.Checked;
+  Overtime.OpeningMonth := cbOpeningMonth.ItemIndex + 1;
+  Overtime.OpeningYear := Trunc(nbOpeningYear.Value);
+  Overtime.OpeningHours := nbOpeningHours.Value;
   TAppSettings.Instance.SetOvertimeAccount(Overtime);
 end;
 
@@ -278,6 +314,8 @@ begin
 end;
 
 procedure TSettingsForm.UpdateOvertimeUi(Sender: TObject);
+var
+  Opening: Boolean;
 begin
   cbPeriod.Enabled := chkOvertimeLimits.Checked;
   nbMin.Enabled := chkOvertimeLimits.Checked;
@@ -285,6 +323,12 @@ begin
   lblGeltung.Enabled := chkOvertimeLimits.Checked;
   lblMin.Enabled := chkOvertimeLimits.Checked;
   lblMax.Enabled := chkOvertimeLimits.Checked;
+  Opening := chkOpening.Checked;
+  cbOpeningMonth.Enabled := Opening;
+  nbOpeningYear.Enabled := Opening;
+  nbOpeningHours.Enabled := Opening;
+  lblOpeningFrom.Enabled := Opening;
+  lblOpeningHours.Enabled := Opening;
 end;
 
 procedure TSettingsForm.WorkDayToggled(Sender: TObject);

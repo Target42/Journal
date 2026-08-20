@@ -199,7 +199,7 @@ void MainWindow::setupMenus()
     auto *termineAction = fileMenu->addAction(QStringLiteral("Termine…"));
     connect(termineAction, &QAction::triggered, this, &MainWindow::openTermine);
 
-    auto *absenceAction = fileMenu->addAction(QStringLiteral("Urlaub / Krankheit…"));
+    auto *absenceAction = fileMenu->addAction(QStringLiteral("Abwesenheit…"));
     connect(absenceAction, &QAction::triggered, m_monthView, &MonthView::openAbsenceDialog);
 
     fileMenu->addSeparator();

@@ -47,6 +47,7 @@ Zum **Ende einer Periode** wird der Kontostand auf konfigurierbare Grenzen **gek
 - **Periode:** **monatlich** oder **quartalsweise** (Kalenderquartale: Jan–Mär, Apr–Jun, Jul–Sep, Okt–Dez).
 - **Untergrenze / Obergrenze** in Stunden, frei wählbar.  
   Vorgabe: **−20 h / +60 h**, Periode **quartalsweise**.
+- **Anfangssaldo:** optional fester Übertrag ab einem gewählten Monat (ersetzt den errechneten Vormonats-Saldo, z. B. nach einem offiziellen Kontenübertrag).
 
 **Wirkung:**
 
@@ -185,6 +186,14 @@ Bei überlappenden Arbeitspaketen zählt die Zeit in Diagrammen immer für das *
 - **Urlaubskonto:** Jahresanspruch ist konfigurierbar (z. B. 30 Tage).
 - **Geplant** = Urlaubstag in der Zukunft; **genommen** = Urlaubstag in der Vergangenheit.
 
+### Bezahlt frei
+
+Tage wie Fortbildung, Sozialtag oder ähnliche Dienstbefreiung: **Ist = Soll** (keine Mehr-/Minderzeit), **ohne** Abzug vom Urlaubskonto.
+
+### Zeitausgleich
+
+Freistellung zu Lasten des Überstundenkontos: das **Soll bleibt**, die Ist-Zeit kommt nur aus tatsächlich erfasster Arbeit (typisch 0). Der Tag zählt **nicht** als Urlaub. Der Saldo sinkt um die Soll-Stunden.
+
 ## Heiligabend und Silvester
 
 Der **24.12.** (Heiligabend) und der **31.12.** (Silvester) sind in den meisten Bundesländern **keine** gesetzlichen Feiertage. Weihnachten (25./26.12.) bleibt Feiertag (Soll = 0).
@@ -258,7 +267,7 @@ Die Monatsübersicht zeigt **immer alle Tage** des gewählten Monats:
 
 **Doppelklick** auf einen Tag (oder Kontextmenü → Arbeitspakete…) öffnet ein Fenster mit allen Arbeitspaketen des Tages; dort können Pakete hinzugefügt, bearbeitet und gelöscht werden.
 
-**Urlaub / Krankheit:** Schaltfläche in der Monatsübersicht, Menü **Datei → Urlaub / Krankheit…** oder Kontextmenü auf einem Tag (ganzer/halber Tag, bzw. **Zeitraum…** für mehrere Tage). Beim Setzen zählen nur Arbeitstage ohne Feiertag.
+**Urlaub / Krankheit / Abwesenheit:** Schaltfläche in der Monatsübersicht, Menü **Datei → Abwesenheit…** oder Kontextmenü auf einem Tag (ganzer/halber Tag, bzw. **Zeitraum…** für mehrere Tage). Beim Setzen zählen nur Arbeitstage ohne Feiertag. Zusätzlich zu Urlaub und Krankheit: **bezahlt frei** (Ist = Soll, kein Urlaubsabzug) und **Zeitausgleich** (Soll bleibt, geht vom Stundenkonto).
 
 **Einfärbung:** Wochenenden, Feiertage und Schulferientage erhalten jeweils eine Hintergrundfarbe.  
 Feiertags- und Feriennamen sowie **Termintitel** des Tages werden in der Hinweis-Spalte angezeigt.
@@ -335,7 +344,8 @@ Eine manuelle Änderung an einem Tag des **aktuellen Monats** berechnet diesen M
 # Datenablage
 
 - Speicherung als **JSON**, lokal (kein Server in v1).
-- **Standard-Datenordner:** `%APPDATA%/Journal` (ein Benutzer, ein Konto). Beim ersten Start wird der frühere Ordner `%APPDATA%/Journal/Journal` dorthin verschoben, sofern kein anderer Ordner gewählt ist.
+- **Standard-Datenordner:** Windows `%APPDATA%/Journal`, Linux `~/.local/share/Journal` (ein Benutzer, ein Konto). Beim ersten Start wird der frühere Ordner `%APPDATA%/Journal/Journal` dorthin verschoben, sofern kein anderer Ordner gewählt ist.
+- **Einstellungen** unter `{Datenordner}/einstellungen.json` (Soll, Arbeitstage, Pausen, Überstundenkonto inkl. Anfangssaldo, Bundesland, Tagesgrenzen, Ruhestand). Beim ersten Start ohne diese Datei werden vorhandene Windows-Registry- bzw. Qt-Einstellungen dorthin übernommen. Nur der gewählte Datenordner-Pfad bleibt maschinenbezogen.
 - **Eine Datei pro Monat** unter `{Datenordner}/monate/{Jahr}-{Monat}.json`.
 - **Eine Datei pro Jahr** unter `{Datenordner}/jahre/{Jahr}.json` (Monatssummen, Jahressumme, Fortschreibung).
 - **Termine** unter `{Datenordner}/termine.json` (einmalige und wöchentliche Termine; keine Zeitrechnung).

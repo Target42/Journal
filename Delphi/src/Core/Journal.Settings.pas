@@ -1,22 +1,23 @@
-unit Journal.Settings;
+﻿unit Journal.Settings;
 
 interface
 
 uses
-  System.SysUtils, System.Classes, Journal.Types, Journal.Events;
+  System.SysUtils, System.Classes, System.JSON, Journal.Types, Journal.Events;
 
 type
   TAppSettings = class
   private
     FOnChanged: TNotifyHub;
+    FStore: TJSONObject;
+    FStoreLoaded: Boolean;
     function ReadString(const Key, Default: string): string;
     procedure WriteString(const Key, Value: string);
-    function ReadBool(const Key: string; Default: Boolean): Boolean;
-    procedure WriteBool(const Key: string; Value: Boolean);
-    function ReadFloat(const Key: string; Default: Double): Double;
-    procedure WriteFloat(const Key: string; Value: Double);
-    function ReadInt(const Key: string; Default: Integer): Integer;
-    procedure WriteInt(const Key: string; Value: Integer);
+    function SettingsFilePath: string;
+    procedure EnsureStore;
+    procedure PersistStore;
+    procedure MigrateFromNative;
+    procedure ReplacePair(Obj: TJSONObject; const Name: string; Value: TJSONValue);
     procedure Changed;
     procedure MigrateLegacyDataPath;
     constructor Create;
@@ -55,13 +56,19 @@ type
 implementation
 
 uses
-  System.Win.Registry, Winapi.Windows, System.IOUtils, System.DateUtils, System.Math;
+  System.Win.Registry, Winapi.Windows, System.IOUtils, System.DateUtils, System.Math,
+  Journal.JsonUtil;
 
 var
   GSettings: TAppSettings;
 
 const
   RegRoot = 'Software\Journal\Journal';
+
+function ReadSubString(const SubKey, ValueName, Default: string): string; forward;
+function ReadSubFloat(const SubKey, ValueName: string; Default: Double): Double; forward;
+function ReadSubBool(const SubKey, ValueName: string; Default: Boolean): Boolean; forward;
+function ReadSubInt(const SubKey, ValueName: string; Default: Integer): Integer; forward;
 
 function DefaultDataPath: string;
 begin
@@ -84,7 +91,8 @@ begin
   Result := TDirectory.Exists(TPath.Combine(Path, 'monate'))
     or TDirectory.Exists(TPath.Combine(Path, 'jahre'))
     or TDirectory.Exists(TPath.Combine(Path, 'kalender'))
-    or TFile.Exists(TPath.Combine(Path, 'titel.json'));
+    or TFile.Exists(TPath.Combine(Path, 'titel.json'))
+    or TFile.Exists(TPath.Combine(Path, 'einstellungen.json'));
 end;
 
 function MoveEntry(const FromPath, ToPath: string): Boolean;
@@ -155,6 +163,7 @@ end;
 
 destructor TAppSettings.Destroy;
 begin
+  FStore.Free;
   FOnChanged.Free;
   inherited;
 end;
@@ -207,62 +216,156 @@ begin
   end;
 end;
 
-function TAppSettings.ReadBool(const Key: string; Default: Boolean): Boolean;
+function JsonArrBool(Arr: TJSONArray; Index: Integer; Default: Boolean): Boolean;
 var
-  S: string;
+  V: TJSONValue;
 begin
-  S := ReadString(Key, '');
-  if S = '' then
-    Result := Default
-  else
-    Result := (S = 'true') or (S = '1') or SameText(S, 'true');
+  Result := Default;
+  if (Arr = nil) or (Index < 0) or (Index >= Arr.Count) then
+    Exit;
+  V := Arr.Items[Index];
+  if V is TJSONBool then
+    Result := TJSONBool(V).AsBoolean
+  else if V is TJSONTrue then
+    Result := True
+  else if V is TJSONFalse then
+    Result := False;
 end;
 
-procedure TAppSettings.WriteBool(const Key: string; Value: Boolean);
+function JsonArrFloat(Arr: TJSONArray; Index: Integer; Default: Double): Double;
+var
+  V: TJSONValue;
 begin
-  if Value then
-    WriteString(Key, 'true')
-  else
-    WriteString(Key, 'false');
+  Result := Default;
+  if (Arr = nil) or (Index < 0) or (Index >= Arr.Count) then
+    Exit;
+  V := Arr.Items[Index];
+  if V is TJSONNumber then
+    Result := TJSONNumber(V).AsDouble;
 end;
 
-function TAppSettings.ReadFloat(const Key: string; Default: Double): Double;
+procedure TAppSettings.ReplacePair(Obj: TJSONObject; const Name: string; Value: TJSONValue);
 var
-  S: string;
-  FS: TFormatSettings;
+  Pair: TJSONPair;
 begin
-  S := ReadString(Key, '');
-  if S = '' then
-    Exit(Default);
-  FS := TFormatSettings.Invariant;
-  if not TryStrToFloat(S, Result, FS) then
+  if Obj = nil then
   begin
-    FS := TFormatSettings.Create('de-DE');
-    if not TryStrToFloat(S, Result, FS) then
-      Result := Default;
+    Value.Free;
+    Exit;
   end;
+  Pair := Obj.RemovePair(Name);
+  Pair.Free;
+  Obj.AddPair(Name, Value);
 end;
 
-procedure TAppSettings.WriteFloat(const Key: string; Value: Double);
+function TAppSettings.SettingsFilePath: string;
+begin
+  Result := TPath.Combine(DataPath, 'einstellungen.json');
+end;
+
+procedure TAppSettings.EnsureStore;
 var
-  FS: TFormatSettings;
+  Root: TJSONValue;
 begin
-  FS := TFormatSettings.Invariant;
-  WriteString(Key, FloatToStr(Value, FS));
+  if FStoreLoaded then
+    Exit;
+  FStoreLoaded := True;
+  Root := LoadJsonFile(SettingsFilePath);
+  if Root is TJSONObject then
+  begin
+    FStore := TJSONObject(Root);
+    Exit;
+  end;
+  Root.Free;
+  MigrateFromNative;
+  PersistStore;
 end;
 
-function TAppSettings.ReadInt(const Key: string; Default: Integer): Integer;
+procedure TAppSettings.PersistStore;
+begin
+  if FStore = nil then
+    Exit;
+  ForceDirectories(DataPath);
+  SaveJsonFile(SettingsFilePath, FStore);
+end;
+
+procedure TAppSettings.MigrateFromNative;
+const
+  DefaultDays: array[0..6] of Boolean = (True, True, True, True, True, False, False);
+  DefaultHours: array[0..6] of Double = (8, 8, 8, 8, 8, 0, 0);
 var
-  S: string;
+  Vacation, WorkTime, Overtime, Retirement, DayBounds, Pause, Slot: TJSONObject;
+  Hours, WorkDays, Presets: TJSONArray;
+  I: Integer;
+  UsualStart, UsualEnd: Integer;
 begin
-  S := ReadString(Key, '');
-  if not TryStrToInt(S, Result) then
-    Result := Default;
-end;
+  FreeAndNil(FStore);
+  FStore := TJSONObject.Create;
+  FStore.AddPair('stateCode', ReadString('stateCode', 'NI'));
 
-procedure TAppSettings.WriteInt(const Key: string; Value: Integer);
-begin
-  WriteString(Key, IntToStr(Value));
+  Vacation := TJSONObject.Create;
+  Vacation.AddPair('annualDays', TJSONNumber.Create(ReadSubFloat('vacation', 'annualDays', 30)));
+  Vacation.AddPair('eveDays', ReadSubString('vacation', 'eveDays', 'normal'));
+  FStore.AddPair('vacation', Vacation);
+
+  WorkTime := TJSONObject.Create;
+  WorkTime.AddPair('mode', ReadSubString('workTime', 'mode', 'even'));
+  WorkTime.AddPair('weeklyHours', TJSONNumber.Create(ReadSubFloat('workTime', 'weeklyHours', 40)));
+  Hours := TJSONArray.Create;
+  WorkDays := TJSONArray.Create;
+  for I := 0 to 6 do
+  begin
+    Hours.Add(ReadSubFloat('workTime\hours', IntToStr(I), DefaultHours[I]));
+    WorkDays.Add(ReadSubBool('workDays', IntToStr(I), DefaultDays[I]));
+  end;
+  WorkTime.AddPair('hours', Hours);
+  FStore.AddPair('workTime', WorkTime);
+  FStore.AddPair('workDays', WorkDays);
+
+  Overtime := TJSONObject.Create;
+  Overtime.AddPair('limitsEnabled', TJSONBool.Create(ReadSubBool('overtime', 'limitsEnabled', True)));
+  Overtime.AddPair('period', ReadSubString('overtime', 'period', 'quarterly'));
+  Overtime.AddPair('minHours', TJSONNumber.Create(ReadSubFloat('overtime', 'minHours', -20)));
+  Overtime.AddPair('maxHours', TJSONNumber.Create(ReadSubFloat('overtime', 'maxHours', 60)));
+  Overtime.AddPair('openingEnabled', TJSONBool.Create(ReadSubBool('overtime', 'openingEnabled', False)));
+  Overtime.AddPair('openingYear', TJSONNumber.Create(ReadSubInt('overtime', 'openingYear', 0)));
+  Overtime.AddPair('openingMonth', TJSONNumber.Create(ReadSubInt('overtime', 'openingMonth', 0)));
+  Overtime.AddPair('openingHours', TJSONNumber.Create(ReadSubFloat('overtime', 'openingHours', 0)));
+  FStore.AddPair('overtime', Overtime);
+
+  Retirement := TJSONObject.Create;
+  Retirement.AddPair('date', ReadSubString('retirement', 'date', '2037-12-01'));
+  Retirement.AddPair('prorateVacation', TJSONBool.Create(ReadSubBool('retirement', 'prorateVacation', True)));
+  FStore.AddPair('retirement', Retirement);
+
+  DayBounds := TJSONObject.Create;
+  DayBounds.AddPair('startMinute', TJSONNumber.Create(ReadSubInt('dayBounds', 'startMinute', DefaultDayStartMinute)));
+  DayBounds.AddPair('endMinute', TJSONNumber.Create(ReadSubInt('dayBounds', 'endMinute', DefaultDayEndMinute)));
+  FStore.AddPair('dayBounds', DayBounds);
+
+  UsualStart := ReadSubInt('pause', 'usualStartMinute', 11 * 60 + 30);
+  UsualEnd := ReadSubInt('pause', 'usualEndMinute', 12 * 60);
+  Pause := TJSONObject.Create;
+  Pause.AddPair('usualStartMinute', TJSONNumber.Create(UsualStart));
+  Pause.AddPair('usualEndMinute', TJSONNumber.Create(UsualEnd));
+  Presets := TJSONArray.Create;
+  Slot := TJSONObject.Create;
+  Slot.AddPair('name', 'Fr' + #$00FC + 'hst' + #$00FC + 'ck');
+  Slot.AddPair('startMinute', TJSONNumber.Create(9 * 60));
+  Slot.AddPair('endMinute', TJSONNumber.Create(9 * 60 + 15));
+  Presets.AddElement(Slot);
+  Slot := TJSONObject.Create;
+  Slot.AddPair('name', 'Mittag');
+  Slot.AddPair('startMinute', TJSONNumber.Create(UsualStart));
+  Slot.AddPair('endMinute', TJSONNumber.Create(UsualEnd));
+  Presets.AddElement(Slot);
+  Slot := TJSONObject.Create;
+  Slot.AddPair('name', '');
+  Slot.AddPair('startMinute', TJSONNumber.Create(0));
+  Slot.AddPair('endMinute', TJSONNumber.Create(0));
+  Presets.AddElement(Slot);
+  Pause.AddPair('presets', Presets);
+  FStore.AddPair('pause', Pause);
 end;
 
 function ReadSubString(const SubKey, ValueName, Default: string): string;
@@ -277,23 +380,6 @@ begin
     begin
       if Reg.ValueExists(ValueName) then
         Result := Reg.ReadString(ValueName);
-      Reg.CloseKey;
-    end;
-  finally
-    Reg.Free;
-  end;
-end;
-
-procedure WriteSubString(const SubKey, ValueName, Value: string);
-var
-  Reg: TRegistry;
-begin
-  Reg := TRegistry.Create(KEY_WRITE);
-  try
-    Reg.RootKey := HKEY_CURRENT_USER;
-    if Reg.OpenKey(RegRoot + '\' + SubKey, True) then
-    begin
-      Reg.WriteString(ValueName, Value);
       Reg.CloseKey;
     end;
   finally
@@ -341,14 +427,6 @@ begin
   end;
 end;
 
-procedure WriteSubFloat(const SubKey, ValueName: string; Value: Double);
-var
-  FS: TFormatSettings;
-begin
-  FS := TFormatSettings.Invariant;
-  WriteSubString(SubKey, ValueName, FloatToStr(Value, FS));
-end;
-
 function ReadSubBool(const SubKey, ValueName: string; Default: Boolean): Boolean;
 var
   S: string;
@@ -360,14 +438,6 @@ begin
     Result := (S = 'true') or (S = '1') or SameText(S, 'true');
 end;
 
-procedure WriteSubBool(const SubKey, ValueName: string; Value: Boolean);
-begin
-  if Value then
-    WriteSubString(SubKey, ValueName, 'true')
-  else
-    WriteSubString(SubKey, ValueName, 'false');
-end;
-
 function ReadSubInt(const SubKey, ValueName: string; Default: Integer): Integer;
 var
   S: string;
@@ -375,11 +445,6 @@ begin
   S := ReadSubString(SubKey, ValueName, '');
   if not TryStrToInt(S, Result) then
     Result := Default;
-end;
-
-procedure WriteSubInt(const SubKey, ValueName: string; Value: Integer);
-begin
-  WriteSubString(SubKey, ValueName, IntToStr(Value));
 end;
 
 class function TAppSettings.GermanStates: TArray<TGermanState>;
@@ -411,14 +476,38 @@ begin
 end;
 
 procedure TAppSettings.SetDataPath(const Path: string);
+var
+  Cleaned: string;
+  Current: TJSONObject;
 begin
-  WriteString('dataPath', Path);
+  Cleaned := ExcludeTrailingPathDelimiter(ExpandFileName(Trim(Path)));
+  if (Cleaned = '') or SamePath(Cleaned, DataPath) then
+    Exit;
+  EnsureStore;
+  Current := FStore;
+  FStore := nil;
+  WriteString('dataPath', Cleaned);
+  FStoreLoaded := False;
+  if TFile.Exists(TPath.Combine(Cleaned, 'einstellungen.json')) then
+  begin
+    Current.Free;
+    EnsureStore;
+  end
+  else if Current <> nil then
+  begin
+    FStore := Current;
+    FStoreLoaded := True;
+    PersistStore;
+  end
+  else
+    EnsureStore;
   Changed;
 end;
 
 function TAppSettings.StateCode: string;
 begin
-  Result := UpperCase(ReadString('stateCode', 'NI'));
+  EnsureStore;
+  Result := UpperCase(JsonStr(FStore, 'stateCode', 'NI'));
 end;
 
 procedure TAppSettings.SetStateCode(const Code: string);
@@ -428,7 +517,9 @@ begin
   Normalized := UpperCase(Trim(Code));
   if (Normalized = '') or (Normalized = StateCode) then
     Exit;
-  WriteString('stateCode', Normalized);
+  EnsureStore;
+  ReplacePair(FStore, 'stateCode', TJSONString.Create(Normalized));
+  PersistStore;
   Changed;
 end;
 
@@ -451,19 +542,23 @@ const
 var
   I: Integer;
   Mode: string;
+  Vacation, WorkTime: TJSONObject;
 begin
-  Result.AnnualVacationDays := ReadSubFloat('vacation', 'annualDays', 30);
-  Result.EveDayTreatment := EveTreatmentFromString(ReadSubString('vacation', 'eveDays', 'normal'));
-  Mode := ReadSubString('workTime', 'mode', 'even');
+  EnsureStore;
+  Vacation := JsonObj(FStore, 'vacation');
+  WorkTime := JsonObj(FStore, 'workTime');
+  Result.AnnualVacationDays := JsonFloat(Vacation, 'annualDays', 30);
+  Result.EveDayTreatment := EveTreatmentFromString(JsonStr(Vacation, 'eveDays', 'normal'));
+  Mode := JsonStr(WorkTime, 'mode', 'even');
   if SameText(Mode, 'individual') then
     Result.WorkTimeMode := wtmIndividual
   else
     Result.WorkTimeMode := wtmEven;
-  Result.WeeklyHours := ReadSubFloat('workTime', 'weeklyHours', 40);
+  Result.WeeklyHours := JsonFloat(WorkTime, 'weeklyHours', 40);
   for I := 0 to 6 do
   begin
-    Result.WorkDays[I] := ReadSubBool('workDays', IntToStr(I), DefaultDays[I]);
-    Result.HoursPerDay[I] := ReadSubFloat('workTime\hours', IntToStr(I), DefaultHours[I]);
+    Result.WorkDays[I] := JsonArrBool(JsonArr(FStore, 'workDays'), I, DefaultDays[I]);
+    Result.HoursPerDay[I] := JsonArrFloat(JsonArr(WorkTime, 'hours'), I, DefaultHours[I]);
   end;
 end;
 
@@ -471,20 +566,37 @@ procedure TAppSettings.SetWorkSettings(const Settings: TWorkSettings);
 var
   I: Integer;
   Mode: string;
+  Vacation, WorkTime: TJSONObject;
+  Hours, WorkDays: TJSONArray;
 begin
-  WriteSubFloat('vacation', 'annualDays', Settings.AnnualVacationDays);
-  WriteSubString('vacation', 'eveDays', EveTreatmentToString(Settings.EveDayTreatment));
+  EnsureStore;
+  Vacation := JsonObj(FStore, 'vacation');
+  if Vacation = nil then
+  begin
+    Vacation := TJSONObject.Create;
+    FStore.AddPair('vacation', Vacation);
+  end;
+  ReplacePair(Vacation, 'annualDays', TJSONNumber.Create(Settings.AnnualVacationDays));
+  ReplacePair(Vacation, 'eveDays', TJSONString.Create(EveTreatmentToString(Settings.EveDayTreatment)));
+
   if Settings.WorkTimeMode = wtmIndividual then
     Mode := 'individual'
   else
     Mode := 'even';
-  WriteSubString('workTime', 'mode', Mode);
-  WriteSubFloat('workTime', 'weeklyHours', Settings.WeeklyHours);
+  WorkTime := TJSONObject.Create;
+  WorkTime.AddPair('mode', Mode);
+  WorkTime.AddPair('weeklyHours', TJSONNumber.Create(Settings.WeeklyHours));
+  Hours := TJSONArray.Create;
+  WorkDays := TJSONArray.Create;
   for I := 0 to 6 do
   begin
-    WriteSubBool('workDays', IntToStr(I), Settings.WorkDays[I]);
-    WriteSubFloat('workTime\hours', IntToStr(I), Settings.HoursPerDay[I]);
+    Hours.Add(Settings.HoursPerDay[I]);
+    WorkDays.Add(Settings.WorkDays[I]);
   end;
+  WorkTime.AddPair('hours', Hours);
+  ReplacePair(FStore, 'workTime', WorkTime);
+  ReplacePair(FStore, 'workDays', WorkDays);
+  PersistStore;
   Changed;
 end;
 
@@ -492,15 +604,22 @@ function TAppSettings.OvertimeAccount: TOvertimeAccountSettings;
 var
   Period: string;
   Tmp: Double;
+  Overtime: TJSONObject;
 begin
-  Result.LimitsEnabled := ReadSubBool('overtime', 'limitsEnabled', True);
-  Period := ReadSubString('overtime', 'period', 'quarterly');
+  EnsureStore;
+  Overtime := JsonObj(FStore, 'overtime');
+  Result.LimitsEnabled := JsonBool(Overtime, 'limitsEnabled', True);
+  Period := JsonStr(Overtime, 'period', 'quarterly');
   if SameText(Period, 'monthly') then
     Result.Period := olpMonthly
   else
     Result.Period := olpQuarterly;
-  Result.MinHours := ReadSubFloat('overtime', 'minHours', -20);
-  Result.MaxHours := ReadSubFloat('overtime', 'maxHours', 60);
+  Result.MinHours := JsonFloat(Overtime, 'minHours', -20);
+  Result.MaxHours := JsonFloat(Overtime, 'maxHours', 60);
+  Result.OpeningEnabled := JsonBool(Overtime, 'openingEnabled', False);
+  Result.OpeningYear := JsonInt(Overtime, 'openingYear', 0);
+  Result.OpeningMonth := JsonInt(Overtime, 'openingMonth', 0);
+  Result.OpeningHours := JsonFloat(Overtime, 'openingHours', 0);
   if Result.MinHours > Result.MaxHours then
   begin
     Tmp := Result.MinHours;
@@ -514,6 +633,7 @@ var
   Sanitized: TOvertimeAccountSettings;
   Tmp: Double;
   Period: string;
+  Overtime: TJSONObject;
 begin
   Sanitized := Settings;
   if Sanitized.MinHours > Sanitized.MaxHours then
@@ -522,14 +642,22 @@ begin
     Sanitized.MinHours := Sanitized.MaxHours;
     Sanitized.MaxHours := Tmp;
   end;
-  WriteSubBool('overtime', 'limitsEnabled', Sanitized.LimitsEnabled);
   if Sanitized.Period = olpMonthly then
     Period := 'monthly'
   else
     Period := 'quarterly';
-  WriteSubString('overtime', 'period', Period);
-  WriteSubFloat('overtime', 'minHours', Sanitized.MinHours);
-  WriteSubFloat('overtime', 'maxHours', Sanitized.MaxHours);
+  Overtime := TJSONObject.Create;
+  Overtime.AddPair('limitsEnabled', TJSONBool.Create(Sanitized.LimitsEnabled));
+  Overtime.AddPair('period', Period);
+  Overtime.AddPair('minHours', TJSONNumber.Create(Sanitized.MinHours));
+  Overtime.AddPair('maxHours', TJSONNumber.Create(Sanitized.MaxHours));
+  Overtime.AddPair('openingEnabled', TJSONBool.Create(Sanitized.OpeningEnabled));
+  Overtime.AddPair('openingYear', TJSONNumber.Create(Sanitized.OpeningYear));
+  Overtime.AddPair('openingMonth', TJSONNumber.Create(Sanitized.OpeningMonth));
+  Overtime.AddPair('openingHours', TJSONNumber.Create(Sanitized.OpeningHours));
+  EnsureStore;
+  ReplacePair(FStore, 'overtime', Overtime);
+  PersistStore;
   Changed;
 end;
 
@@ -539,69 +667,165 @@ var
   Fallback: TDate;
 begin
   Fallback := EncodeDate(2037, 12, 1);
-  S := ReadSubString('retirement', 'date', IsoDate(Fallback));
+  EnsureStore;
+  S := JsonStr(JsonObj(FStore, 'retirement'), 'date', IsoDate(Fallback));
   Result := ParseIsoDate(S);
   if not DateValid(Result) then
     Result := Fallback;
 end;
 
 procedure TAppSettings.SetRetirementDate(const ADate: TDate);
+var
+  Retirement: TJSONObject;
 begin
   if not DateValid(ADate) or SameDate(ADate, RetirementDate) then
     Exit;
-  WriteSubString('retirement', 'date', IsoDate(ADate));
+  EnsureStore;
+  Retirement := JsonObj(FStore, 'retirement');
+  if Retirement = nil then
+  begin
+    Retirement := TJSONObject.Create;
+    FStore.AddPair('retirement', Retirement);
+  end;
+  ReplacePair(Retirement, 'date', TJSONString.Create(IsoDate(ADate)));
+  PersistStore;
+  Changed;
 end;
 
 function TAppSettings.ProrateVacationInExitYear: Boolean;
 begin
-  Result := ReadSubBool('retirement', 'prorateVacation', True);
+  EnsureStore;
+  Result := JsonBool(JsonObj(FStore, 'retirement'), 'prorateVacation', True);
 end;
 
 procedure TAppSettings.SetProrateVacationInExitYear(Enabled: Boolean);
+var
+  Retirement: TJSONObject;
 begin
   if Enabled = ProrateVacationInExitYear then
     Exit;
-  WriteSubBool('retirement', 'prorateVacation', Enabled);
+  EnsureStore;
+  Retirement := JsonObj(FStore, 'retirement');
+  if Retirement = nil then
+  begin
+    Retirement := TJSONObject.Create;
+    FStore.AddPair('retirement', Retirement);
+  end;
+  ReplacePair(Retirement, 'prorateVacation', TJSONBool.Create(Enabled));
+  PersistStore;
+  Changed;
 end;
 
 function TAppSettings.DayStartMinute: Integer;
+var
+  Bounds: TJSONObject;
 begin
+  EnsureStore;
+  Bounds := JsonObj(FStore, 'dayBounds');
   Result := SanitizeDayBounds(
-    ReadSubInt('dayBounds', 'startMinute', DefaultDayStartMinute),
-    ReadSubInt('dayBounds', 'endMinute', DefaultDayEndMinute)).StartMinute;
+    JsonInt(Bounds, 'startMinute', DefaultDayStartMinute),
+    JsonInt(Bounds, 'endMinute', DefaultDayEndMinute)).StartMinute;
 end;
 
 function TAppSettings.DayEndMinute: Integer;
+var
+  Bounds: TJSONObject;
 begin
+  EnsureStore;
+  Bounds := JsonObj(FStore, 'dayBounds');
   Result := SanitizeDayBounds(
-    ReadSubInt('dayBounds', 'startMinute', DefaultDayStartMinute),
-    ReadSubInt('dayBounds', 'endMinute', DefaultDayEndMinute)).EndMinute;
+    JsonInt(Bounds, 'startMinute', DefaultDayStartMinute),
+    JsonInt(Bounds, 'endMinute', DefaultDayEndMinute)).EndMinute;
 end;
 
 procedure TAppSettings.SetDayWindow(AStart, AEnd: Integer);
 var
   Bounds: TDayBounds;
+  Obj: TJSONObject;
 begin
   Bounds := SanitizeDayBounds(AStart, AEnd);
-  WriteSubInt('dayBounds', 'startMinute', Bounds.StartMinute);
-  WriteSubInt('dayBounds', 'endMinute', Bounds.EndMinute);
+  Obj := TJSONObject.Create;
+  Obj.AddPair('startMinute', TJSONNumber.Create(Bounds.StartMinute));
+  Obj.AddPair('endMinute', TJSONNumber.Create(Bounds.EndMinute));
+  EnsureStore;
+  ReplacePair(FStore, 'dayBounds', Obj);
+  PersistStore;
   Changed;
 end;
 
 function TAppSettings.UsualPauseWindow: TDayBounds;
+var
+  Pause, Slot: TJSONObject;
+  Presets: TJSONArray;
+  I: Integer;
 begin
+  EnsureStore;
+  Pause := JsonObj(FStore, 'pause');
+  Presets := JsonArr(Pause, 'presets');
+  if Presets <> nil then
+    for I := 0 to Presets.Count - 1 do
+    begin
+      if not (Presets.Items[I] is TJSONObject) then
+        Continue;
+      Slot := TJSONObject(Presets.Items[I]);
+      if SameText(JsonStr(Slot, 'name', ''), 'Mittag') then
+        Exit(SanitizeDayBounds(
+          JsonInt(Slot, 'startMinute', 11 * 60 + 30),
+          JsonInt(Slot, 'endMinute', 12 * 60)));
+    end;
   Result := SanitizeDayBounds(
-    ReadSubInt('pause', 'usualStartMinute', 11 * 60 + 30),
-    ReadSubInt('pause', 'usualEndMinute', 12 * 60));
+    JsonInt(Pause, 'usualStartMinute', 11 * 60 + 30),
+    JsonInt(Pause, 'usualEndMinute', 12 * 60));
 end;
 
 procedure TAppSettings.SetUsualPauseWindow(AStart, AEnd: Integer);
 var
   Bounds: TDayBounds;
+  Pause, Slot: TJSONObject;
+  Presets: TJSONArray;
+  I: Integer;
+  Found: Boolean;
 begin
   Bounds := SanitizeDayBounds(AStart, AEnd);
-  WriteSubInt('pause', 'usualStartMinute', Bounds.StartMinute);
-  WriteSubInt('pause', 'usualEndMinute', Bounds.EndMinute);
+  EnsureStore;
+  Pause := JsonObj(FStore, 'pause');
+  if Pause = nil then
+  begin
+    Pause := TJSONObject.Create;
+    FStore.AddPair('pause', Pause);
+  end;
+  ReplacePair(Pause, 'usualStartMinute', TJSONNumber.Create(Bounds.StartMinute));
+  ReplacePair(Pause, 'usualEndMinute', TJSONNumber.Create(Bounds.EndMinute));
+  Presets := JsonArr(Pause, 'presets');
+  Found := False;
+  if Presets <> nil then
+    for I := 0 to Presets.Count - 1 do
+    begin
+      if not (Presets.Items[I] is TJSONObject) then
+        Continue;
+      Slot := TJSONObject(Presets.Items[I]);
+      if SameText(JsonStr(Slot, 'name', ''), 'Mittag') then
+      begin
+        ReplacePair(Slot, 'startMinute', TJSONNumber.Create(Bounds.StartMinute));
+        ReplacePair(Slot, 'endMinute', TJSONNumber.Create(Bounds.EndMinute));
+        Found := True;
+        Break;
+      end;
+    end;
+  if not Found then
+  begin
+    if Presets = nil then
+    begin
+      Presets := TJSONArray.Create;
+      Pause.AddPair('presets', Presets);
+    end;
+    Slot := TJSONObject.Create;
+    Slot.AddPair('name', 'Mittag');
+    Slot.AddPair('startMinute', TJSONNumber.Create(Bounds.StartMinute));
+    Slot.AddPair('endMinute', TJSONNumber.Create(Bounds.EndMinute));
+    Presets.AddElement(Slot);
+  end;
+  PersistStore;
   Changed;
 end;
 

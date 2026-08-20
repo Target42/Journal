@@ -2,6 +2,7 @@
 
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -14,7 +15,7 @@
 AbsenceDialog::AbsenceDialog(const QDate &from, const QDate &to, QWidget *parent)
     : QDialog(parent)
 {
-    setWindowTitle(QStringLiteral("Urlaub / Krankheit"));
+    setWindowTitle(QStringLiteral("Abwesenheit"));
     setModal(true);
     setMinimumWidth(420);
     setupUi();
@@ -45,15 +46,18 @@ void AbsenceDialog::setupUi()
     root->addLayout(form);
 
     auto *typeGroup = new QGroupBox(QStringLiteral("Art"), this);
-    auto *typeLayout = new QHBoxLayout(typeGroup);
+    auto *typeLayout = new QGridLayout(typeGroup);
     m_vacationRadio = new QRadioButton(QStringLiteral("Urlaub"), typeGroup);
     m_sickRadio = new QRadioButton(QStringLiteral("Krankheit"), typeGroup);
+    m_paidRadio = new QRadioButton(QStringLiteral("Bezahlt frei"), typeGroup);
+    m_compensatoryRadio = new QRadioButton(QStringLiteral("Zeitausgleich"), typeGroup);
     m_clearRadio = new QRadioButton(QStringLiteral("Status entfernen"), typeGroup);
     m_vacationRadio->setChecked(true);
-    typeLayout->addWidget(m_vacationRadio);
-    typeLayout->addWidget(m_sickRadio);
-    typeLayout->addWidget(m_clearRadio);
-    typeLayout->addStretch();
+    typeLayout->addWidget(m_vacationRadio, 0, 0);
+    typeLayout->addWidget(m_sickRadio, 0, 1);
+    typeLayout->addWidget(m_paidRadio, 0, 2);
+    typeLayout->addWidget(m_compensatoryRadio, 1, 0);
+    typeLayout->addWidget(m_clearRadio, 1, 1);
     root->addWidget(typeGroup);
 
     auto *extentGroup = new QGroupBox(QStringLiteral("Umfang"), this);
@@ -68,7 +72,9 @@ void AbsenceDialog::setupUi()
 
     auto *hint = new QLabel(
         QStringLiteral("Beim Setzen werden nur Arbeitstage ohne Feiertag berücksichtigt. "
-                       "An diesen Tagen gilt die Soll-Arbeitszeit (keine Mehr- oder Minderzeit)."),
+                       "Urlaub, Krankheit und bezahlt frei setzen Ist = Soll (keine Mehr- oder "
+                       "Minderzeit). Zeitausgleich lässt das Soll bestehen und geht vom "
+                       "Stundenkonto ab."),
         this);
     hint->setWordWrap(true);
     root->addWidget(hint);
@@ -111,7 +117,15 @@ Absence AbsenceDialog::absence() const
         return {};
     }
     Absence absence;
-    absence.type = m_sickRadio->isChecked() ? AbsenceType::Sick : AbsenceType::Vacation;
+    if (m_sickRadio->isChecked()) {
+        absence.type = AbsenceType::Sick;
+    } else if (m_paidRadio->isChecked()) {
+        absence.type = AbsenceType::PaidLeave;
+    } else if (m_compensatoryRadio->isChecked()) {
+        absence.type = AbsenceType::Compensatory;
+    } else {
+        absence.type = AbsenceType::Vacation;
+    }
     absence.fraction = m_halfRadio->isChecked() ? 0.5 : 1.0;
     return absence;
 }

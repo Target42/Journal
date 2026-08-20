@@ -5,7 +5,9 @@
 enum class AbsenceType {
     None,
     Vacation,
-    Sick
+    Sick,
+    PaidLeave,
+    Compensatory
 };
 
 struct Absence {
@@ -15,6 +17,13 @@ struct Absence {
     bool isSet() const { return type != AbsenceType::None && fraction > 0.005; }
 
     bool isHalfDay() const { return isSet() && fraction < 0.999; }
+
+    bool fillsToTarget() const
+    {
+        return isSet()
+            && (type == AbsenceType::Vacation || type == AbsenceType::Sick
+                || type == AbsenceType::PaidLeave);
+    }
 
     QString label() const
     {
@@ -28,6 +37,12 @@ struct Absence {
         if (type == AbsenceType::Sick) {
             return half ? QStringLiteral("Krankheit (½)") : QStringLiteral("Krankheit");
         }
+        if (type == AbsenceType::PaidLeave) {
+            return half ? QStringLiteral("Bezahlt frei (½)") : QStringLiteral("Bezahlt frei");
+        }
+        if (type == AbsenceType::Compensatory) {
+            return half ? QStringLiteral("Zeitausgleich (½)") : QStringLiteral("Zeitausgleich");
+        }
         return {};
     }
 
@@ -38,6 +53,10 @@ struct Absence {
             return QStringLiteral("vacation");
         case AbsenceType::Sick:
             return QStringLiteral("sick");
+        case AbsenceType::PaidLeave:
+            return QStringLiteral("paid");
+        case AbsenceType::Compensatory:
+            return QStringLiteral("compensatory");
         case AbsenceType::None:
             break;
         }
@@ -51,6 +70,10 @@ struct Absence {
             absence.type = AbsenceType::Vacation;
         } else if (type == QLatin1String("sick")) {
             absence.type = AbsenceType::Sick;
+        } else if (type == QLatin1String("paid")) {
+            absence.type = AbsenceType::PaidLeave;
+        } else if (type == QLatin1String("compensatory")) {
+            absence.type = AbsenceType::Compensatory;
         } else {
             return {};
         }

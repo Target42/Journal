@@ -4,6 +4,7 @@
 #include "WorkPackage.h"
 
 #include <QDate>
+#include <QJsonObject>
 #include <QList>
 #include <QObject>
 #include <QString>
@@ -50,6 +51,10 @@ struct OvertimeAccountSettings {
     OvertimeLimitPeriod period = OvertimeLimitPeriod::Quarterly;
     double minHours = -20.0;
     double maxHours = 60.0;
+    bool openingEnabled = false;
+    int openingYear = 0;
+    int openingMonth = 0;
+    double openingHours = 0.0;
 };
 
 struct WorkSettings {
@@ -109,4 +114,13 @@ signals:
 private:
     AppSettings();
     void migrateLegacyDataPath();
+    QString settingsFilePath() const;
+    void ensureStore() const;
+    void persistStore() const;
+    void migrateFromNative() const;
+    QJsonObject group(const QString &name) const;
+    void setGroup(const QString &name, const QJsonObject &group) const;
+
+    mutable QJsonObject m_store;
+    mutable bool m_storeLoaded = false;
 };

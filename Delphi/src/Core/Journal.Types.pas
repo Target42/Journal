@@ -21,7 +21,7 @@ const
   MinQualifyingPauseSegmentMinutes = 15;
 
 type
-  TAbsenceType = (atNone, atVacation, atSick);
+  TAbsenceType = (atNone, atVacation, atSick, atPaidLeave, atCompensatory);
   TWorkTimeMode = (wtmEven, wtmIndividual);
   TOvertimeLimitPeriod = (olpMonthly, olpQuarterly);
   TEveDayTreatment = (edtNormal, edtFullVacation, edtHalfVacation, edtCompanyFree);
@@ -59,6 +59,7 @@ type
     Fraction: Double;
     function IsSet: Boolean;
     function IsHalfDay: Boolean;
+    function FillsToTarget: Boolean;
     function LabelText: string;
     function TypeString: string;
     class function FromJson(const AType: string; AFraction: Double): TAbsence; static;
@@ -69,6 +70,10 @@ type
     Period: TOvertimeLimitPeriod;
     MinHours: Double;
     MaxHours: Double;
+    OpeningEnabled: Boolean;
+    OpeningYear: Integer;
+    OpeningMonth: Integer;
+    OpeningHours: Double;
   end;
 
   TWorkSettings = record
@@ -425,6 +430,11 @@ begin
   Result := IsSet and (Fraction < 0.999);
 end;
 
+function TAbsence.FillsToTarget: Boolean;
+begin
+  Result := IsSet and (AbsenceType in [atVacation, atSick, atPaidLeave]);
+end;
+
 function TAbsence.LabelText: string;
 begin
   Result := '';
@@ -443,6 +453,20 @@ begin
       Result := 'Krankheit (' + #$00BD + ')'
     else
       Result := 'Krankheit';
+  end
+  else if AbsenceType = atPaidLeave then
+  begin
+    if IsHalfDay then
+      Result := 'Bezahlt frei (' + #$00BD + ')'
+    else
+      Result := 'Bezahlt frei';
+  end
+  else if AbsenceType = atCompensatory then
+  begin
+    if IsHalfDay then
+      Result := 'Zeitausgleich (' + #$00BD + ')'
+    else
+      Result := 'Zeitausgleich';
   end;
 end;
 
@@ -451,6 +475,8 @@ begin
   case AbsenceType of
     atVacation: Result := 'vacation';
     atSick: Result := 'sick';
+    atPaidLeave: Result := 'paid';
+    atCompensatory: Result := 'compensatory';
   else
     Result := '';
   end;
@@ -464,6 +490,10 @@ begin
     Result.AbsenceType := atVacation
   else if SameText(AType, 'sick') then
     Result.AbsenceType := atSick
+  else if SameText(AType, 'paid') then
+    Result.AbsenceType := atPaidLeave
+  else if SameText(AType, 'compensatory') then
+    Result.AbsenceType := atCompensatory
   else
     Exit;
   if AFraction >= 0.999 then

@@ -5,6 +5,7 @@
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QDate>
 #include <QDialogButtonBox>
 #include <QDoubleSpinBox>
 #include <QFormLayout>
@@ -17,6 +18,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QRadioButton>
+#include <QSpinBox>
 #include <QTabWidget>
 #include <QTimeEdit>
 #include <QVBoxLayout>
@@ -237,6 +239,41 @@ void SettingsDialog::setupUi()
     overtimeHint->setWordWrap(true);
     overtimeLayout->addWidget(overtimeHint);
     overtimePageLayout->addWidget(overtimeGroup);
+
+    auto *openingGroup = new QGroupBox(QStringLiteral("Anfangssaldo"), overtimePage);
+    auto *openingLayout = new QVBoxLayout(openingGroup);
+    m_openingCheck = new QCheckBox(
+        QStringLiteral("Konto ab diesem Monat mit festem Übertrag starten"), openingGroup);
+    openingLayout->addWidget(m_openingCheck);
+    m_openingPane = new QWidget(openingGroup);
+    auto *openingForm = new QFormLayout(m_openingPane);
+    openingForm->setContentsMargins(24, 0, 0, 0);
+    auto *openingFromRow = new QHBoxLayout();
+    m_openingMonthCombo = new QComboBox(m_openingPane);
+    for (int month = 1; month <= 12; ++month) {
+        m_openingMonthCombo->addItem(locale.monthName(month), month);
+    }
+    m_openingYearSpin = new QSpinBox(m_openingPane);
+    m_openingYearSpin->setRange(1970, 2100);
+    m_openingYearSpin->setValue(QDate::currentDate().year());
+    openingFromRow->addWidget(m_openingMonthCombo);
+    openingFromRow->addWidget(m_openingYearSpin);
+    openingForm->addRow(QStringLiteral("Ab Monat:"), openingFromRow);
+    m_openingHoursSpin = new QDoubleSpinBox(m_openingPane);
+    m_openingHoursSpin->setRange(-500.0, 500.0);
+    m_openingHoursSpin->setDecimals(2);
+    m_openingHoursSpin->setSingleStep(0.25);
+    m_openingHoursSpin->setSuffix(QStringLiteral(" h"));
+    m_openingHoursSpin->setAlignment(Qt::AlignRight);
+    openingForm->addRow(QStringLiteral("Stundenkonto:"), m_openingHoursSpin);
+    openingLayout->addWidget(m_openingPane);
+    auto *openingHint = new QLabel(
+        QStringLiteral("Ersetzt den errechneten Vormonats-Saldo, z. B. nach einem offiziellen "
+                       "Übertrag der Zeitabrechnung."),
+        openingGroup);
+    openingHint->setWordWrap(true);
+    openingLayout->addWidget(openingHint);
+    overtimePageLayout->addWidget(openingGroup);
     overtimePageLayout->addStretch();
     tabs->addTab(overtimePage, QStringLiteral("Konto"));
 
@@ -354,6 +391,8 @@ void SettingsDialog::setupUi()
             this, &SettingsDialog::applyEvenHoursToWorkDays);
     connect(m_overtimeLimitsCheck, &QCheckBox::toggled,
             this, &SettingsDialog::updateOvertimeUi);
+    connect(m_openingCheck, &QCheckBox::toggled,
+            this, &SettingsDialog::updateOvertimeUi);
     connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
     connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
 }
@@ -417,6 +456,14 @@ void SettingsDialog::loadFromSettings()
     m_overtimePeriodCombo->setCurrentIndex(periodIndex >= 0 ? periodIndex : 1);
     m_overtimeMinSpin->setValue(overtime.minHours);
     m_overtimeMaxSpin->setValue(overtime.maxHours);
+    m_openingCheck->setChecked(overtime.openingEnabled);
+    const int openingMonth = (overtime.openingMonth >= 1 && overtime.openingMonth <= 12)
+                                 ? overtime.openingMonth
+                                 : 1;
+    m_openingMonthCombo->setCurrentIndex(openingMonth - 1);
+    m_openingYearSpin->setValue(overtime.openingYear >= 1970 ? overtime.openingYear
+                                                             : QDate::currentDate().year());
+    m_openingHoursSpin->setValue(overtime.openingHours);
     updateOvertimeUi();
 }
 
@@ -452,6 +499,10 @@ void SettingsDialog::saveToSettings()
         m_overtimePeriodCombo->currentData().toInt());
     overtime.minHours = m_overtimeMinSpin->value();
     overtime.maxHours = m_overtimeMaxSpin->value();
+    overtime.openingEnabled = m_openingCheck->isChecked();
+    overtime.openingMonth = m_openingMonthCombo->currentData().toInt();
+    overtime.openingYear = m_openingYearSpin->value();
+    overtime.openingHours = m_openingHoursSpin->value();
     AppSettings::instance().setOvertimeAccount(overtime);
 }
 
@@ -498,6 +549,7 @@ void SettingsDialog::updateEvenPreview()
 void SettingsDialog::updateOvertimeUi()
 {
     m_overtimeLimitsPane->setEnabled(m_overtimeLimitsCheck->isChecked());
+    m_openingPane->setEnabled(m_openingCheck->isChecked());
 }
 
 int SettingsDialog::selectedWorkDayCount() const

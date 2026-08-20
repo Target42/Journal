@@ -18,7 +18,7 @@ object MonthViewFrame: TMonthViewFrame
       Width = 168
       Height = 36
       Align = alRight
-      Caption = 'Urlaub / Krankheit'#8230
+      Caption = 'Abwesenheit'#8230
       TabOrder = 0
     end
     object lblSummary: TLabel

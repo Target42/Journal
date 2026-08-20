@@ -11,6 +11,7 @@ class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
 class QRadioButton;
+class QSpinBox;
 class QTimeEdit;
 class QWidget;
 
@@ -56,4 +57,9 @@ private:
     QDoubleSpinBox *m_overtimeMinSpin = nullptr;
     QDoubleSpinBox *m_overtimeMaxSpin = nullptr;
     QWidget *m_overtimeLimitsPane = nullptr;
+    QCheckBox *m_openingCheck = nullptr;
+    QComboBox *m_openingMonthCombo = nullptr;
+    QSpinBox *m_openingYearSpin = nullptr;
+    QDoubleSpinBox *m_openingHoursSpin = nullptr;
+    QWidget *m_openingPane = nullptr;
 };

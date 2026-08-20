@@ -456,6 +456,79 @@ object SettingsForm: TSettingsForm
           WordWrap = True
         end
       end
+      object grpOpening: TGroupBox
+        Left = 8
+        Top = 216
+        Width = 604
+        Height = 140
+        Caption = 'Anfangssaldo'
+        TabOrder = 1
+        object chkOpening: TCheckBox
+          Left = 12
+          Top = 22
+          Width = 360
+          Height = 17
+          Caption = 'Konto ab diesem Monat mit festem '#220'bertrag starten'
+          TabOrder = 0
+        end
+        object lblOpeningFrom: TLabel
+          Left = 32
+          Top = 52
+          Width = 54
+          Height = 15
+          Caption = 'Ab Monat:'
+        end
+        object cbOpeningMonth: TComboBox
+          Left = 140
+          Top = 48
+          Width = 140
+          Height = 23
+          Style = csDropDownList
+          TabOrder = 1
+        end
+        object nbOpeningYear: TNumberBox
+          Left = 288
+          Top = 48
+          Width = 70
+          Height = 23
+          Alignment = taRightJustify
+          MinValue = 1970.000000000000000000
+          MaxValue = 2100.000000000000000000
+          TabOrder = 2
+          Value = 2025.000000000000000000
+        end
+        object lblOpeningHours: TLabel
+          Left = 32
+          Top = 84
+          Width = 79
+          Height = 15
+          Caption = 'Stundenkonto:'
+        end
+        object nbOpeningHours: TNumberBox
+          Left = 140
+          Top = 80
+          Width = 90
+          Height = 23
+          Alignment = taRightJustify
+          Decimal = 2
+          MinValue = -500.000000000000000000
+          MaxValue = 500.000000000000000000
+          Mode = nbmFloat
+          NegativeValueColor = clRed
+          TabOrder = 3
+        end
+        object lblOpeningHint: TLabel
+          Left = 12
+          Top = 108
+          Width = 576
+          Height = 24
+          AutoSize = False
+          Caption = 
+            'Ersetzt den errechneten Vormonats-Saldo, z. B. nach einem offizi' +
+            'ellen '#220'bertrag.'
+          WordWrap = True
+        end
+      end
     end
     object tabDay: TTabSheet
       Caption = 'Tag'

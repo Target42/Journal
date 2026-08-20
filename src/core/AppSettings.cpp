@@ -6,6 +6,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QSaveFile>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QVector>
@@ -64,7 +68,8 @@ bool looksLikeJournalData(const QString &path)
 {
     const QDir dir(path);
     return dir.exists(QStringLiteral("monate")) || dir.exists(QStringLiteral("jahre"))
-        || dir.exists(QStringLiteral("kalender")) || dir.exists(QStringLiteral("titel.json"));
+        || dir.exists(QStringLiteral("kalender")) || dir.exists(QStringLiteral("titel.json"))
+        || dir.exists(QStringLiteral("einstellungen.json"));
 }
 
 bool removeDirIfEmpty(const QString &path)
@@ -144,6 +149,161 @@ void AppSettings::migrateLegacyDataPath()
     }
 }
 
+QString AppSettings::settingsFilePath() const
+{
+    return QDir(dataPath()).filePath(QStringLiteral("einstellungen.json"));
+}
+
+void AppSettings::ensureStore() const
+{
+    if (m_storeLoaded) {
+        return;
+    }
+    m_storeLoaded = true;
+
+    QFile file(settingsFilePath());
+    if (file.open(QIODevice::ReadOnly)) {
+        const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+        if (doc.isObject()) {
+            m_store = doc.object();
+            return;
+        }
+    }
+
+    migrateFromNative();
+    persistStore();
+}
+
+void AppSettings::persistStore() const
+{
+    QDir().mkpath(dataPath());
+    QSaveFile file(settingsFilePath());
+    if (!file.open(QIODevice::WriteOnly)) {
+        return;
+    }
+    file.write(QJsonDocument(m_store).toJson(QJsonDocument::Indented));
+    file.commit();
+}
+
+void AppSettings::migrateFromNative() const
+{
+    QSettings settings;
+    m_store = QJsonObject();
+
+    m_store.insert(QStringLiteral("stateCode"),
+                   settings.value(QStringLiteral("stateCode"), QStringLiteral("NI")).toString().toUpper());
+
+    QJsonObject vacation;
+    vacation.insert(QStringLiteral("annualDays"),
+                    settings.value(QStringLiteral("vacation/annualDays"), 30.0).toDouble());
+    vacation.insert(QStringLiteral("eveDays"),
+                    settings.value(QStringLiteral("vacation/eveDays"), QStringLiteral("normal")).toString());
+    m_store.insert(QStringLiteral("vacation"), vacation);
+
+    QJsonObject workTime;
+    workTime.insert(QStringLiteral("mode"),
+                    settings.value(QStringLiteral("workTime/mode"), QStringLiteral("even")).toString());
+    workTime.insert(QStringLiteral("weeklyHours"),
+                    settings.value(QStringLiteral("workTime/weeklyHours"), 40.0).toDouble());
+    QJsonArray hours;
+    static constexpr double defaultHours[7] = {8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0};
+    for (int i = 0; i < 7; ++i) {
+        hours.append(settings.value(QStringLiteral("workTime/hours/%1").arg(i), defaultHours[i]).toDouble());
+    }
+    workTime.insert(QStringLiteral("hours"), hours);
+    m_store.insert(QStringLiteral("workTime"), workTime);
+
+    QJsonArray workDays;
+    static constexpr bool defaultDays[7] = {true, true, true, true, true, false, false};
+    for (int i = 0; i < 7; ++i) {
+        workDays.append(settings.value(QStringLiteral("workDays/%1").arg(i), defaultDays[i]).toBool());
+    }
+    m_store.insert(QStringLiteral("workDays"), workDays);
+
+    QJsonObject overtime;
+    overtime.insert(QStringLiteral("limitsEnabled"),
+                    settings.value(QStringLiteral("overtime/limitsEnabled"), true).toBool());
+    overtime.insert(QStringLiteral("period"),
+                    settings.value(QStringLiteral("overtime/period"), QStringLiteral("quarterly")).toString());
+    overtime.insert(QStringLiteral("minHours"),
+                    settings.value(QStringLiteral("overtime/minHours"), -20.0).toDouble());
+    overtime.insert(QStringLiteral("maxHours"),
+                    settings.value(QStringLiteral("overtime/maxHours"), 60.0).toDouble());
+    overtime.insert(QStringLiteral("openingEnabled"),
+                    settings.value(QStringLiteral("overtime/openingEnabled"), false).toBool());
+    overtime.insert(QStringLiteral("openingYear"),
+                    settings.value(QStringLiteral("overtime/openingYear"), 0).toInt());
+    overtime.insert(QStringLiteral("openingMonth"),
+                    settings.value(QStringLiteral("overtime/openingMonth"), 0).toInt());
+    overtime.insert(QStringLiteral("openingHours"),
+                    settings.value(QStringLiteral("overtime/openingHours"), 0.0).toDouble());
+    m_store.insert(QStringLiteral("overtime"), overtime);
+
+    QJsonObject retirement;
+    retirement.insert(QStringLiteral("date"),
+                      settings.value(QStringLiteral("retirement/date"), QStringLiteral("2037-12-01")).toString());
+    retirement.insert(QStringLiteral("prorateVacation"),
+                      settings.value(QStringLiteral("retirement/prorateVacation"), true).toBool());
+    m_store.insert(QStringLiteral("retirement"), retirement);
+
+    QJsonObject dayBounds;
+    dayBounds.insert(QStringLiteral("startMinute"),
+                     settings.value(QStringLiteral("dayBounds/startMinute"), kDefaultDayStartMinute).toInt());
+    dayBounds.insert(QStringLiteral("endMinute"),
+                     settings.value(QStringLiteral("dayBounds/endMinute"), kDefaultDayEndMinute).toInt());
+    m_store.insert(QStringLiteral("dayBounds"), dayBounds);
+
+    QJsonObject pause;
+    pause.insert(QStringLiteral("usualStartMinute"),
+                 settings.value(QStringLiteral("pause/usualStartMinute"), kUsualPauseStartDefault).toInt());
+    pause.insert(QStringLiteral("usualEndMinute"),
+                 settings.value(QStringLiteral("pause/usualEndMinute"), kUsualPauseEndDefault).toInt());
+    QJsonArray presets;
+    const bool hasPresets = settings.contains(QStringLiteral("pause/preset/0/name"))
+        || settings.contains(QStringLiteral("pause/preset/1/name"))
+        || settings.contains(QStringLiteral("pause/preset/2/name"));
+    if (hasPresets) {
+        for (int i = 0; i < kPausePresetCount; ++i) {
+            const QString prefix = QStringLiteral("pause/preset/%1/").arg(i);
+            QJsonObject slot;
+            slot.insert(QStringLiteral("name"), settings.value(prefix + QStringLiteral("name")).toString());
+            slot.insert(QStringLiteral("startMinute"),
+                        settings.value(prefix + QStringLiteral("startMinute"), 0).toInt());
+            slot.insert(QStringLiteral("endMinute"),
+                        settings.value(prefix + QStringLiteral("endMinute"), 0).toInt());
+            presets.append(slot);
+        }
+    } else {
+        const DayBounds legacy = sanitizedDayBounds(
+            settings.value(QStringLiteral("pause/usualStartMinute"), kUsualPauseStartDefault).toInt(),
+            settings.value(QStringLiteral("pause/usualEndMinute"), kUsualPauseEndDefault).toInt());
+        presets.append(QJsonObject{{QStringLiteral("name"), QStringLiteral("Frühstück")},
+                                   {QStringLiteral("startMinute"), kDefaultBreakfastStartMinute},
+                                   {QStringLiteral("endMinute"), kDefaultBreakfastEndMinute}});
+        presets.append(QJsonObject{{QStringLiteral("name"), QStringLiteral("Mittag")},
+                                   {QStringLiteral("startMinute"), legacy.startMinute},
+                                   {QStringLiteral("endMinute"), legacy.endMinute}});
+        presets.append(QJsonObject{{QStringLiteral("name"), QString()},
+                                   {QStringLiteral("startMinute"), 0},
+                                   {QStringLiteral("endMinute"), 0}});
+    }
+    pause.insert(QStringLiteral("presets"), presets);
+    m_store.insert(QStringLiteral("pause"), pause);
+}
+
+QJsonObject AppSettings::group(const QString &name) const
+{
+    ensureStore();
+    return m_store.value(name).toObject();
+}
+
+void AppSettings::setGroup(const QString &name, const QJsonObject &group) const
+{
+    ensureStore();
+    m_store.insert(name, group);
+    persistStore();
+}
+
 QString AppSettings::dataPath() const
 {
     QSettings settings;
@@ -156,8 +316,25 @@ QString AppSettings::dataPath() const
 
 void AppSettings::setDataPath(const QString &path)
 {
+    const QString cleaned = QDir::cleanPath(path.trimmed());
+    if (cleaned.isEmpty() || samePath(cleaned, dataPath())) {
+        return;
+    }
+
+    ensureStore();
+    const QJsonObject current = m_store;
+
     QSettings settings;
-    settings.setValue(QStringLiteral("dataPath"), path);
+    settings.setValue(QStringLiteral("dataPath"), cleaned);
+
+    m_storeLoaded = false;
+    if (QFile::exists(QDir(cleaned).filePath(QStringLiteral("einstellungen.json")))) {
+        ensureStore();
+    } else {
+        m_store = current;
+        m_storeLoaded = true;
+        persistStore();
+    }
     emit changed();
 }
 
@@ -186,8 +363,8 @@ const QList<GermanState> &AppSettings::germanStates()
 
 QString AppSettings::stateCode() const
 {
-    QSettings settings;
-    return settings.value(QStringLiteral("stateCode"), QStringLiteral("NI")).toString().toUpper();
+    ensureStore();
+    return m_store.value(QStringLiteral("stateCode")).toString(QStringLiteral("NI")).toUpper();
 }
 
 void AppSettings::setStateCode(const QString &code)
@@ -196,8 +373,9 @@ void AppSettings::setStateCode(const QString &code)
     if (normalized.isEmpty() || normalized == stateCode()) {
         return;
     }
-    QSettings settings;
-    settings.setValue(QStringLiteral("stateCode"), normalized);
+    ensureStore();
+    m_store.insert(QStringLiteral("stateCode"), normalized);
+    persistStore();
     emit changed();
 }
 
@@ -214,78 +392,75 @@ QString AppSettings::stateDisplayName() const
 
 WorkSettings AppSettings::workSettings() const
 {
-    QSettings settings;
+    const QJsonObject vacation = group(QStringLiteral("vacation"));
+    const QJsonObject workTime = group(QStringLiteral("workTime"));
+    const QJsonArray workDays = m_store.value(QStringLiteral("workDays")).toArray();
+    const QJsonArray hours = workTime.value(QStringLiteral("hours")).toArray();
+
     WorkSettings ws;
-
-    ws.annualVacationDays =
-        settings.value(QStringLiteral("vacation/annualDays"), 30.0).toDouble();
+    ws.annualVacationDays = vacation.value(QStringLiteral("annualDays")).toDouble(30.0);
     ws.eveDayTreatment = eveTreatmentFromString(
-        settings.value(QStringLiteral("vacation/eveDays"), QStringLiteral("normal")).toString());
-
-    const QString mode =
-        settings.value(QStringLiteral("workTime/mode"), QStringLiteral("even")).toString();
-    ws.workTimeMode = (mode == QStringLiteral("individual"))
+        vacation.value(QStringLiteral("eveDays")).toString(QStringLiteral("normal")));
+    ws.workTimeMode = workTime.value(QStringLiteral("mode")).toString() == QLatin1String("individual")
                           ? WorkTimeMode::Individual
                           : WorkTimeMode::Even;
-
-    ws.weeklyHours =
-        settings.value(QStringLiteral("workTime/weeklyHours"), 40.0).toDouble();
+    ws.weeklyHours = workTime.value(QStringLiteral("weeklyHours")).toDouble(40.0);
 
     static constexpr bool defaultDays[7] = {true, true, true, true, true, false, false};
     static constexpr double defaultHours[7] = {8.0, 8.0, 8.0, 8.0, 8.0, 0.0, 0.0};
-
     for (int i = 0; i < 7; ++i) {
-        ws.workDays[i] =
-            settings.value(QStringLiteral("workDays/%1").arg(i), defaultDays[i]).toBool();
-        ws.hoursPerDay[i] =
-            settings.value(QStringLiteral("workTime/hours/%1").arg(i), defaultHours[i]).toDouble();
+        ws.workDays[i] = workDays.size() > i ? workDays.at(i).toBool(defaultDays[i]) : defaultDays[i];
+        ws.hoursPerDay[i] = hours.size() > i ? hours.at(i).toDouble(defaultHours[i]) : defaultHours[i];
     }
-
     return ws;
 }
 
 void AppSettings::setWorkSettings(const WorkSettings &ws)
 {
-    QSettings settings;
-    settings.setValue(QStringLiteral("vacation/annualDays"), ws.annualVacationDays);
-    settings.setValue(QStringLiteral("vacation/eveDays"), eveTreatmentToString(ws.eveDayTreatment));
-    settings.setValue(QStringLiteral("workTime/mode"),
-                      ws.workTimeMode == WorkTimeMode::Individual
-                          ? QStringLiteral("individual")
-                          : QStringLiteral("even"));
-    settings.setValue(QStringLiteral("workTime/weeklyHours"), ws.weeklyHours);
+    ensureStore();
 
+    QJsonObject vacation = m_store.value(QStringLiteral("vacation")).toObject();
+    vacation.insert(QStringLiteral("annualDays"), ws.annualVacationDays);
+    vacation.insert(QStringLiteral("eveDays"), eveTreatmentToString(ws.eveDayTreatment));
+    m_store.insert(QStringLiteral("vacation"), vacation);
+
+    QJsonObject workTime = m_store.value(QStringLiteral("workTime")).toObject();
+    workTime.insert(QStringLiteral("mode"),
+                    ws.workTimeMode == WorkTimeMode::Individual
+                        ? QStringLiteral("individual")
+                        : QStringLiteral("even"));
+    workTime.insert(QStringLiteral("weeklyHours"), ws.weeklyHours);
+    QJsonArray hours;
+    QJsonArray workDays;
     for (int i = 0; i < 7; ++i) {
-        settings.setValue(QStringLiteral("workDays/%1").arg(i), ws.workDays[i]);
-        settings.setValue(QStringLiteral("workTime/hours/%1").arg(i), ws.hoursPerDay[i]);
+        hours.append(ws.hoursPerDay[i]);
+        workDays.append(ws.workDays[i]);
     }
+    workTime.insert(QStringLiteral("hours"), hours);
+    m_store.insert(QStringLiteral("workTime"), workTime);
+    m_store.insert(QStringLiteral("workDays"), workDays);
 
+    persistStore();
     emit changed();
 }
 
 OvertimeAccountSettings AppSettings::overtimeAccount() const
 {
-    QSettings settings;
+    const QJsonObject overtime = group(QStringLiteral("overtime"));
     OvertimeAccountSettings account;
-
-    account.limitsEnabled =
-        settings.value(QStringLiteral("overtime/limitsEnabled"), true).toBool();
-
-    const QString period =
-        settings.value(QStringLiteral("overtime/period"), QStringLiteral("quarterly")).toString();
-    account.period = (period == QStringLiteral("monthly"))
+    account.limitsEnabled = overtime.value(QStringLiteral("limitsEnabled")).toBool(true);
+    account.period = overtime.value(QStringLiteral("period")).toString() == QLatin1String("monthly")
                          ? OvertimeLimitPeriod::Monthly
                          : OvertimeLimitPeriod::Quarterly;
-
-    account.minHours =
-        settings.value(QStringLiteral("overtime/minHours"), -20.0).toDouble();
-    account.maxHours =
-        settings.value(QStringLiteral("overtime/maxHours"), 60.0).toDouble();
-
+    account.minHours = overtime.value(QStringLiteral("minHours")).toDouble(-20.0);
+    account.maxHours = overtime.value(QStringLiteral("maxHours")).toDouble(60.0);
+    account.openingEnabled = overtime.value(QStringLiteral("openingEnabled")).toBool(false);
+    account.openingYear = overtime.value(QStringLiteral("openingYear")).toInt(0);
+    account.openingMonth = overtime.value(QStringLiteral("openingMonth")).toInt(0);
+    account.openingHours = overtime.value(QStringLiteral("openingHours")).toDouble(0.0);
     if (account.minHours > account.maxHours) {
         std::swap(account.minHours, account.maxHours);
     }
-
     return account;
 }
 
@@ -296,23 +471,27 @@ void AppSettings::setOvertimeAccount(const OvertimeAccountSettings &account)
         std::swap(sanitized.minHours, sanitized.maxHours);
     }
 
-    QSettings settings;
-    settings.setValue(QStringLiteral("overtime/limitsEnabled"), sanitized.limitsEnabled);
-    settings.setValue(QStringLiteral("overtime/period"),
-                      sanitized.period == OvertimeLimitPeriod::Monthly
-                          ? QStringLiteral("monthly")
-                          : QStringLiteral("quarterly"));
-    settings.setValue(QStringLiteral("overtime/minHours"), sanitized.minHours);
-    settings.setValue(QStringLiteral("overtime/maxHours"), sanitized.maxHours);
+    QJsonObject overtime;
+    overtime.insert(QStringLiteral("limitsEnabled"), sanitized.limitsEnabled);
+    overtime.insert(QStringLiteral("period"),
+                    sanitized.period == OvertimeLimitPeriod::Monthly
+                        ? QStringLiteral("monthly")
+                        : QStringLiteral("quarterly"));
+    overtime.insert(QStringLiteral("minHours"), sanitized.minHours);
+    overtime.insert(QStringLiteral("maxHours"), sanitized.maxHours);
+    overtime.insert(QStringLiteral("openingEnabled"), sanitized.openingEnabled);
+    overtime.insert(QStringLiteral("openingYear"), sanitized.openingYear);
+    overtime.insert(QStringLiteral("openingMonth"), sanitized.openingMonth);
+    overtime.insert(QStringLiteral("openingHours"), sanitized.openingHours);
+    setGroup(QStringLiteral("overtime"), overtime);
     emit changed();
 }
 
 QDate AppSettings::retirementDate() const
 {
-    QSettings settings;
     const QDate fallback(2037, 12, 1);
     const QDate date = QDate::fromString(
-        settings.value(QStringLiteral("retirement/date"), fallback.toString(Qt::ISODate)).toString(),
+        group(QStringLiteral("retirement")).value(QStringLiteral("date")).toString(fallback.toString(Qt::ISODate)),
         Qt::ISODate);
     return date.isValid() ? date : fallback;
 }
@@ -322,14 +501,15 @@ void AppSettings::setRetirementDate(const QDate &date)
     if (!date.isValid() || date == retirementDate()) {
         return;
     }
-    QSettings settings;
-    settings.setValue(QStringLiteral("retirement/date"), date.toString(Qt::ISODate));
+    QJsonObject retirement = group(QStringLiteral("retirement"));
+    retirement.insert(QStringLiteral("date"), date.toString(Qt::ISODate));
+    setGroup(QStringLiteral("retirement"), retirement);
+    emit changed();
 }
 
 bool AppSettings::prorateVacationInExitYear() const
 {
-    QSettings settings;
-    return settings.value(QStringLiteral("retirement/prorateVacation"), true).toBool();
+    return group(QStringLiteral("retirement")).value(QStringLiteral("prorateVacation")).toBool(true);
 }
 
 void AppSettings::setProrateVacationInExitYear(bool enabled)
@@ -337,36 +517,37 @@ void AppSettings::setProrateVacationInExitYear(bool enabled)
     if (enabled == prorateVacationInExitYear()) {
         return;
     }
-    QSettings settings;
-    settings.setValue(QStringLiteral("retirement/prorateVacation"), enabled);
+    QJsonObject retirement = group(QStringLiteral("retirement"));
+    retirement.insert(QStringLiteral("prorateVacation"), enabled);
+    setGroup(QStringLiteral("retirement"), retirement);
+    emit changed();
 }
 
 int AppSettings::dayStartMinute() const
 {
-    QSettings settings;
+    const QJsonObject bounds = group(QStringLiteral("dayBounds"));
     return sanitizedDayBounds(
-               settings.value(QStringLiteral("dayBounds/startMinute"), kDefaultDayStartMinute)
-                   .toInt(),
-               settings.value(QStringLiteral("dayBounds/endMinute"), kDefaultDayEndMinute).toInt())
+               bounds.value(QStringLiteral("startMinute")).toInt(kDefaultDayStartMinute),
+               bounds.value(QStringLiteral("endMinute")).toInt(kDefaultDayEndMinute))
         .startMinute;
 }
 
 int AppSettings::dayEndMinute() const
 {
-    QSettings settings;
+    const QJsonObject bounds = group(QStringLiteral("dayBounds"));
     return sanitizedDayBounds(
-               settings.value(QStringLiteral("dayBounds/startMinute"), kDefaultDayStartMinute)
-                   .toInt(),
-               settings.value(QStringLiteral("dayBounds/endMinute"), kDefaultDayEndMinute).toInt())
+               bounds.value(QStringLiteral("startMinute")).toInt(kDefaultDayStartMinute),
+               bounds.value(QStringLiteral("endMinute")).toInt(kDefaultDayEndMinute))
         .endMinute;
 }
 
 void AppSettings::setDayWindow(int startMinute, int endMinute)
 {
     const DayBounds bounds = sanitizedDayBounds(startMinute, endMinute);
-    QSettings settings;
-    settings.setValue(QStringLiteral("dayBounds/startMinute"), bounds.startMinute);
-    settings.setValue(QStringLiteral("dayBounds/endMinute"), bounds.endMinute);
+    QJsonObject obj;
+    obj.insert(QStringLiteral("startMinute"), bounds.startMinute);
+    obj.insert(QStringLiteral("endMinute"), bounds.endMinute);
+    setGroup(QStringLiteral("dayBounds"), obj);
     emit changed();
 }
 
@@ -392,15 +573,14 @@ DayBounds AppSettings::usualPauseWindow() const
 
 std::array<PausePreset, kPausePresetCount> AppSettings::pausePresetSlots() const
 {
-    QSettings settings;
-    const bool hasPresets = settings.contains(QStringLiteral("pause/preset/0/name"))
-        || settings.contains(QStringLiteral("pause/preset/1/name"))
-        || settings.contains(QStringLiteral("pause/preset/2/name"));
+    const QJsonObject pause = group(QStringLiteral("pause"));
+    const QJsonArray presets = pause.value(QStringLiteral("presets")).toArray();
+    std::array<PausePreset, kPausePresetCount> presetSlots {};
 
-    if (!hasPresets) {
+    if (presets.isEmpty()) {
         const DayBounds legacy = sanitizedDayBounds(
-            settings.value(QStringLiteral("pause/usualStartMinute"), kUsualPauseStartDefault).toInt(),
-            settings.value(QStringLiteral("pause/usualEndMinute"), kUsualPauseEndDefault).toInt());
+            pause.value(QStringLiteral("usualStartMinute")).toInt(kUsualPauseStartDefault),
+            pause.value(QStringLiteral("usualEndMinute")).toInt(kUsualPauseEndDefault));
         return {
             PausePreset{QStringLiteral("Frühstück"),
                         kDefaultBreakfastStartMinute,
@@ -410,14 +590,11 @@ std::array<PausePreset, kPausePresetCount> AppSettings::pausePresetSlots() const
         };
     }
 
-    std::array<PausePreset, kPausePresetCount> presetSlots {};
-    for (int i = 0; i < kPausePresetCount; ++i) {
-        const QString prefix = QStringLiteral("pause/preset/%1/").arg(i);
-        presetSlots[i].name = settings.value(prefix + QStringLiteral("name")).toString().trimmed();
-        presetSlots[i].startMinute =
-            settings.value(prefix + QStringLiteral("startMinute"), 0).toInt();
-        presetSlots[i].endMinute =
-            settings.value(prefix + QStringLiteral("endMinute"), 0).toInt();
+    for (int i = 0; i < kPausePresetCount && i < presets.size(); ++i) {
+        const QJsonObject slot = presets.at(i).toObject();
+        presetSlots[i].name = slot.value(QStringLiteral("name")).toString().trimmed();
+        presetSlots[i].startMinute = slot.value(QStringLiteral("startMinute")).toInt(0);
+        presetSlots[i].endMinute = slot.value(QStringLiteral("endMinute")).toInt(0);
     }
     return presetSlots;
 }
@@ -435,20 +612,32 @@ QVector<PausePreset> AppSettings::pausePresets() const
 
 void AppSettings::setPausePresetSlots(const std::array<PausePreset, kPausePresetCount> &presetSlots)
 {
-    QSettings settings;
+    ensureStore();
+    QJsonObject pause = m_store.value(QStringLiteral("pause")).toObject();
+    QJsonArray presets;
+    DayBounds usual = sanitizedDayBounds(kUsualPauseStartDefault, kUsualPauseEndDefault);
     for (int i = 0; i < kPausePresetCount; ++i) {
-        const QString prefix = QStringLiteral("pause/preset/%1/").arg(i);
         const PausePreset slot = presetSlots[i];
+        QJsonObject obj;
         if (slot.isValid()) {
-            settings.setValue(prefix + QStringLiteral("name"), slot.label());
-            settings.setValue(prefix + QStringLiteral("startMinute"), slot.startMinute);
-            settings.setValue(prefix + QStringLiteral("endMinute"), slot.endMinute);
+            obj.insert(QStringLiteral("name"), slot.label());
+            obj.insert(QStringLiteral("startMinute"), slot.startMinute);
+            obj.insert(QStringLiteral("endMinute"), slot.endMinute);
+            if (slot.label().compare(QStringLiteral("Mittag"), Qt::CaseInsensitive) == 0) {
+                usual = {slot.startMinute, slot.endMinute, false};
+            }
         } else {
-            settings.setValue(prefix + QStringLiteral("name"), QString());
-            settings.setValue(prefix + QStringLiteral("startMinute"), 0);
-            settings.setValue(prefix + QStringLiteral("endMinute"), 0);
+            obj.insert(QStringLiteral("name"), QString());
+            obj.insert(QStringLiteral("startMinute"), 0);
+            obj.insert(QStringLiteral("endMinute"), 0);
         }
+        presets.append(obj);
     }
+    pause.insert(QStringLiteral("presets"), presets);
+    pause.insert(QStringLiteral("usualStartMinute"), usual.startMinute);
+    pause.insert(QStringLiteral("usualEndMinute"), usual.endMinute);
+    m_store.insert(QStringLiteral("pause"), pause);
+    persistStore();
     emit changed();
 }
 
